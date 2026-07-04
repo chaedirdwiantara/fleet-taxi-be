@@ -60,8 +60,8 @@ importers:
         specifier: ^0.15.1
         version: 0.15.1
       connect-redis:
-        specifier: ^9.0.0
-        version: 9.0.0(express-session@1.19.0)(redis@6.1.0)
+        specifier: ^7.1.1
+        version: 7.1.1(express-session@1.19.0)
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -2100,12 +2100,11 @@ packages:
     resolution: {integrity: sha512-MWufYdFw53ccGjCA+Ol7XJYpAlW6/prSMzuPOTRnJGcGzuhLn4Scrz7qf6o8bROZ514ltazcIFJZevcfbo0x7A==}
     engines: {'0': node >= 6.0}
 
-  connect-redis@9.0.0:
-    resolution: {integrity: sha512-QwzyvUePTMvEzG1hy45gZYw3X3YHrjmEdSkayURlcZft7hqadQ3X39wYkmCqblK2rGlw+XItELYt6GnyG6DEIQ==}
-    engines: {node: '>=18'}
+  connect-redis@7.1.1:
+    resolution: {integrity: sha512-M+z7alnCJiuzKa8/1qAYdGUXHYfDnLolOGAUjOioB07pP39qxjG+X9ibsud7qUBc4jMV5Mcy3ugGv8eFcgamJQ==}
+    engines: {node: '>=16'}
     peerDependencies:
       express-session: '>=1'
-      redis: '>=5'
 
   content-disposition@1.1.0:
     resolution: {integrity: sha512-5jRCH9Z/+DRP7rkvY83B+yGIGX96OYdJmzngqnw2SBSxqCFPd0w2km3s5iawpGX8krnwSGmF0FW5Nhr0Hfai3g==}
@@ -4951,22 +4950,27 @@ snapshots:
   '@redis/bloom@6.1.0(@redis/client@6.1.0)':
     dependencies:
       '@redis/client': 6.1.0
+    optional: true
 
   '@redis/client@6.1.0':
     dependencies:
       cluster-key-slot: 1.1.2
+    optional: true
 
   '@redis/json@6.1.0(@redis/client@6.1.0)':
     dependencies:
       '@redis/client': 6.1.0
+    optional: true
 
   '@redis/search@6.1.0(@redis/client@6.1.0)':
     dependencies:
       '@redis/client': 6.1.0
+    optional: true
 
   '@redis/time-series@6.1.0(@redis/client@6.1.0)':
     dependencies:
       '@redis/client': 6.1.0
+    optional: true
 
   '@rolldown/binding-android-arm64@1.1.4':
     optional: true
@@ -5828,10 +5832,9 @@ snapshots:
       readable-stream: 3.6.2
       typedarray: 0.0.6
 
-  connect-redis@9.0.0(express-session@1.19.0)(redis@6.1.0):
+  connect-redis@7.1.1(express-session@1.19.0):
     dependencies:
       express-session: 1.19.0
-      redis: 6.1.0
 
   content-disposition@1.1.0: {}
 
@@ -7017,6 +7020,7 @@ snapshots:
     transitivePeerDependencies:
       - '@node-rs/xxhash'
       - '@opentelemetry/api'
+    optional: true
 
   reflect-metadata@0.2.2: {}
 

@@ -1,0 +1,51 @@
+import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
+import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { SessionGuard } from '../common/guards/session.guard';
+import { AuthService } from './auth.service';
+import { LoginDto } from './dto/login.dto';
+import { SessionUser } from './session.types';
+
+@ApiTags('auth')
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Post('login')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Admin login — sets the session cookie' })
+  async login(@Body() dto: LoginDto, @Req() req: Request): Promise<SessionUser> {
+    const user = await this.authService.validateCredentials(dto.email, dto.password);
+    // Regenerate to prevent session fixation, then persist the user
+    await new Promise<void>((resolve, reject) =>
+      req.session.regenerate((err) =>
+        err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve(),
+      ),
+    );
+    req.session.user = user;
+    return user;
+  }
+
+  @Post('logout')
+  @HttpCode(200)
+  @UseGuards(SessionGuard)
+  @ApiCookieAuth('session')
+  @ApiOperation({ summary: 'Destroy the session' })
+  async logout(@Req() req: Request): Promise<{ loggedOut: true }> {
+    await new Promise<void>((resolve, reject) =>
+      req.session.destroy((err) =>
+        err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve(),
+      ),
+    );
+    return { loggedOut: true };
+  }
+
+  @Get('me')
+  @UseGuards(SessionGuard)
+  @ApiCookieAuth('session')
+  @ApiOperation({ summary: 'Current session user' })
+  me(@CurrentUser() user: SessionUser): SessionUser {
+    return user;
+  }
+}
