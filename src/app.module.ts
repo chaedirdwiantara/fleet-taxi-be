@@ -4,6 +4,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { Env } from './config/env';
+import { FleetModule } from './fleet/fleet.module';
+import { GrabModule } from './grab/grab.module';
 import { ImportModule } from './import/import.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -41,6 +43,8 @@ import { UsersModule } from './users/users.module';
     PartnersModule,
     RealtimeModule,
     ImportModule,
+    FleetModule,
+    GrabModule,
   ],
   controllers: [HealthController],
   providers: [

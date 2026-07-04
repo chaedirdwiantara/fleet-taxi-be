@@ -260,6 +260,466 @@
           "admin-fleet-imports"
         ]
       }
+    },
+    "/admin/fleet/gojek/grid": {
+      "get": {
+        "operationId": "GojekController_grid",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "string"
+            }
+          },
+          {
+            "name": "plates",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "rentalPartner",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "31-day deposit pivot grid (rows = vehicles)",
+        "tags": [
+          "admin-fleet-gojek"
+        ]
+      }
+    },
+    "/admin/fleet/gojek/cell": {
+      "get": {
+        "operationId": "GojekController_cell",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "query",
+            "description": "Row key: normalized plate or manual_<detailId>",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "day",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 15,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "One vehicle+day transaction breakdown (cell-click modal)",
+        "tags": [
+          "admin-fleet-gojek"
+        ]
+      }
+    },
+    "/admin/fleet/gojek/performers": {
+      "get": {
+        "operationId": "GojekController_performers",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Top/bottom 10 drivers by outstanding",
+        "tags": [
+          "admin-fleet-gojek"
+        ]
+      }
+    },
+    "/admin/fleet/gojek/exceptions": {
+      "get": {
+        "operationId": "GojekController_exceptions",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List exceptions for a period",
+        "tags": [
+          "admin-fleet-gojek"
+        ]
+      },
+      "post": {
+        "operationId": "GojekController_createException",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExceptionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Mark an exception (rental / maintenance / free-day)",
+        "tags": [
+          "admin-fleet-gojek"
+        ]
+      }
+    },
+    "/admin/fleet/gojek/exceptions/{id}": {
+      "delete": {
+        "operationId": "GojekController_deleteException",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete an exception",
+        "tags": [
+          "admin-fleet-gojek"
+        ]
+      }
+    },
+    "/admin/fleet/{platform}/targets/{plate}": {
+      "get": {
+        "operationId": "TargetsController_get",
+        "parameters": [
+          {
+            "name": "platform",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "gojek",
+                "grab"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "plate",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Read driver/target metadata for a plate",
+        "tags": [
+          "admin-fleet-targets"
+        ]
+      },
+      "put": {
+        "operationId": "TargetsController_upsert",
+        "parameters": [
+          {
+            "name": "platform",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "gojek",
+                "grab"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "plate",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create/update driver/target metadata (upsert by plate)",
+        "tags": [
+          "admin-fleet-targets"
+        ]
+      }
+    },
+    "/admin/fleet/grab/grid": {
+      "get": {
+        "operationId": "GrabController_grid",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "31-day earnings pivot grid (composite key plate|city|driver)",
+        "tags": [
+          "admin-fleet-grab"
+        ]
+      }
+    },
+    "/admin/fleet/grab/cell": {
+      "get": {
+        "operationId": "GrabController_cell",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "query",
+            "description": "plate|city|driver",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "day",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 15,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "One composite-key+day breakdown",
+        "tags": [
+          "admin-fleet-grab"
+        ]
+      }
+    },
+    "/admin/fleet/grab/performers": {
+      "get": {
+        "operationId": "GrabController_performers",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Top/bottom 10 by total earning collected",
+        "tags": [
+          "admin-fleet-grab"
+        ]
+      }
     }
   },
   "info": {
@@ -304,6 +764,33 @@
         "required": [
           "email",
           "password"
+        ]
+      },
+      "CreateExceptionDto": {
+        "type": "object",
+        "properties": {
+          "vehiclePlate": {
+            "type": "string",
+            "example": "B1234XY"
+          },
+          "exceptionDate": {
+            "type": "string",
+            "example": "2026-07-10",
+            "description": "YYYY-MM-DD"
+          },
+          "keterangan": {
+            "type": "string",
+            "example": "Perbaikan bengkel"
+          },
+          "isBebasSetoran": {
+            "type": "boolean",
+            "default": false,
+            "description": "true = bebas setoran (reduces target days)"
+          }
+        },
+        "required": [
+          "vehiclePlate",
+          "exceptionDate"
         ]
       }
     }
