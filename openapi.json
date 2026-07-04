@@ -87,6 +87,179 @@
           "auth"
         ]
       }
+    },
+    "/admin/fleet/{platform}/imports": {
+      "post": {
+        "operationId": "ImportController_upload",
+        "parameters": [
+          {
+            "name": "platform",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "gojek",
+                "grab"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "month",
+                  "year"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "month": {
+                    "type": "integer",
+                    "example": 7
+                  },
+                  "year": {
+                    "type": "integer",
+                    "example": 2026
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Upload a CSV/XLSX for a period — parsed asynchronously",
+        "tags": [
+          "admin-fleet-imports"
+        ]
+      },
+      "get": {
+        "operationId": "ImportController_list",
+        "parameters": [
+          {
+            "name": "platform",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "gojek",
+                "grab"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List import batches",
+        "tags": [
+          "admin-fleet-imports"
+        ]
+      }
+    },
+    "/admin/fleet/{platform}/imports/{id}": {
+      "get": {
+        "operationId": "ImportController_getById",
+        "parameters": [
+          {
+            "name": "platform",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "gojek",
+                "grab"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Import status/progress (also streamed via Socket.IO /rt)",
+        "tags": [
+          "admin-fleet-imports"
+        ]
+      },
+      "delete": {
+        "operationId": "ImportController_rollback",
+        "parameters": [
+          {
+            "name": "platform",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "gojek",
+                "grab"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Rollback a whole import batch (queued)",
+        "tags": [
+          "admin-fleet-imports"
+        ]
+      }
     }
   },
   "info": {
