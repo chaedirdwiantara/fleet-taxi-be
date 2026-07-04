@@ -1,4 +1,4 @@
-import { bigint, index, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { bigint, boolean, index, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { partners } from './partners';
 
 // Redesigned from legacy trx_orders (PROJECT-BRIEF.md §5)
@@ -18,6 +18,8 @@ export const orders = pgTable(
     pickupAt: timestamp('pickup_at', { withTimezone: true }),
     basicPrice: bigint('basic_price', { mode: 'number' }), // integer rupiah
     refHotelId: bigint('ref_hotel_id', { mode: 'number' }),
+    // legacy swap-trip rule: set when destination is EVISTA_HALIM
+    isSwapTrip: boolean('is_swap_trip').notNull().default(false),
     passengerDetails: jsonb('passenger_details'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -15,6 +15,13 @@
       "when": 1783163699109,
       "tag": "0001_partitioned_import_details",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783204575263,
+      "tag": "0002_certain_hairball",
+      "breakpoints": true
     }
   ]
 }

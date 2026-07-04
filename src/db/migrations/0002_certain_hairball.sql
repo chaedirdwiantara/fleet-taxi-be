@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "is_swap_trip" boolean DEFAULT false NOT NULL;

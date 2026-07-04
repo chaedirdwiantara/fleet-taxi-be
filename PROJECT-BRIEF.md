@@ -77,15 +77,13 @@ Legacy auth is a **primitive hardcoded token whitelist** (`ApiPartnerAuth::handl
 
 Partner touches these entities: **orders** (`trx_orders`), cars, drivers, pricelist, hotel routes, shuttle pools.
 
-> ### ⚠️ OPEN QUESTION #1 — Full partner screen inventory (resolve FIRST)
-> The exact list of screens under `/partner/` was only **partially** surfaced in earlier exploration. In the legacy app these screens are **CRUDBooster/DB-driven** (defined in `cms_menus` + `cms_menus_privileges`, not in `routes/web.php`), so they cannot be read from route files alone.
+> ### ✅ OPEN QUESTION #1 — RESOLVED (2026-07-05, from `evista-backup-20260606.sql`)
+> **Confirmed legacy partner (privilege 12 "Partner") screen inventory:**
+> 1. `cms_menus_privileges` grants privilege 12 exactly **two menus**: #257 "All Dashboard" (folder) and #209 **"Dashboard" → `AdminDashboardController@getMaindashboard`**. That is the ONLY screen a legacy partner sees; the controller sets an `is_partner` flag (line ~609) and the dashboard view renders a partner-restricted variant.
+> 2. The 103 `cms_privileges_roles` module grants for privilege 12 are a **blanket seed** (identical grants copied to all new privileges by `2026_04_02_000000_seed_privileges_roles_for_new_privileges.php`) — they do NOT represent intentional partner screens and must not be rebuilt.
+> 3. External `/partner/v1` routes confirmed in `routes/api.php` lines 364–370 (GET pricelist / order/create / order/history / order/detail/{id}, middleware `auth.api.partner`). Business rules confirmed: pool whitelist `EVISTA_HALIM` + `BHISA_CAWANG`; valid combos price 65 000 (price_list_id 1: BHISA_CAWANG→EVISTA_HALIM… id 2: reverse); `is_swap_trip = 1` when destination is `EVISTA_HALIM`; orders created as `order_type='later'`.
 >
-> **This is the first exploration task in BOTH the backend and frontend chats.** Resolve it by exploring `evista-backend`:
-> 1. Query/inspect **`cms_menus_privileges` for privilege id 12** and join to `cms_menus` to get the menu list, paths, and controllers. Use the DB dump `evista-backup-20260606.sql` (grep for `cms_menus`, `cms_menus_privileges`, `id_cms_privileges` `12`).
-> 2. Cross-check the **partner controllers** those menus point to.
-> 3. Confirm the **external `/partner/v1` routes** in `routes/api.php` (partner group, ~lines 364–370).
->
-> Record the confirmed inventory in this file (append to §2 B) before building portal screens.
+> **Consequence for the rebuild:** the modern portal surface stays as §6.2 (login/me/dashboard/own-orders list+detail/export) — a cleaned-up superset of the single legacy dashboard screen. No additional legacy screens exist to port.
 
 ---
 

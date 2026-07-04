@@ -720,6 +720,334 @@
           "admin-fleet-grab"
         ]
       }
+    },
+    "/partner/portal/login": {
+      "post": {
+        "operationId": "PortalController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Partner portal login — sets the session cookie",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/logout": {
+      "post": {
+        "operationId": "PortalController_logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/me": {
+      "get": {
+        "operationId": "PortalController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Current partner user + partner profile",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/dashboard": {
+      "get": {
+        "operationId": "PortalController_dashboard",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Partner metrics/summary widgets (own data only)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/orders": {
+      "get": {
+        "operationId": "PortalController_orders",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 50,
+              "type": "string"
+            }
+          },
+          {
+            "name": "tripStatus",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List own orders (paginated, filterable)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/orders/export": {
+      "get": {
+        "operationId": "PortalController_export",
+        "parameters": [
+          {
+            "name": "format",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "xlsx",
+                "pdf"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Export own orders (?format=pdf|xlsx)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/orders/{id}": {
+      "get": {
+        "operationId": "PortalController_order",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "One own order detail (403 for another partner’s order)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/v1/pricelist": {
+      "get": {
+        "operationId": "PricelistController_quote",
+        "parameters": [
+          {
+            "name": "pickupCode",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": "BHISA_CAWANG",
+              "type": "string"
+            }
+          },
+          {
+            "name": "destinationCode",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": "EVISTA_HALIM",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "partner-api-key": []
+          }
+        ],
+        "summary": "Route/car pricelist for the authenticated partner",
+        "tags": [
+          "partner-v1"
+        ]
+      }
+    },
+    "/partner/v1/orders": {
+      "post": {
+        "operationId": "PartnerOrdersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePartnerOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "partner-api-key": []
+          }
+        ],
+        "summary": "Create an order (replaces legacy GET /partner/v1/order/create)",
+        "tags": [
+          "partner-v1"
+        ]
+      },
+      "get": {
+        "operationId": "PartnerOrdersController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "partner-api-key": []
+          }
+        ],
+        "summary": "Order history for the authenticated partner",
+        "tags": [
+          "partner-v1"
+        ]
+      }
+    },
+    "/partner/v1/orders/{id}": {
+      "get": {
+        "operationId": "PartnerOrdersController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "partner-api-key": []
+          }
+        ],
+        "summary": "One order's detail (own orders only — cross-partner returns 403)",
+        "tags": [
+          "partner-v1"
+        ]
+      }
     }
   },
   "info": {
@@ -791,6 +1119,39 @@
         "required": [
           "vehiclePlate",
           "exceptionDate"
+        ]
+      },
+      "CreatePartnerOrderDto": {
+        "type": "object",
+        "properties": {
+          "pickupCode": {
+            "type": "string",
+            "example": "BHISA_CAWANG",
+            "description": "Pool code (whitelisted)"
+          },
+          "destinationCode": {
+            "type": "string",
+            "example": "EVISTA_HALIM"
+          },
+          "carTypesId": {
+            "type": "number",
+            "example": 1
+          },
+          "pickupAt": {
+            "type": "string",
+            "example": "2026-07-10 09:00:00",
+            "description": "ISO 8601, or \"YYYY-MM-DD HH:mm:ss\" interpreted as Asia/Jakarta"
+          },
+          "passengerDetails": {
+            "type": "object",
+            "description": "Free-form passenger details (stored as JSON)"
+          }
+        },
+        "required": [
+          "pickupCode",
+          "destinationCode",
+          "carTypesId",
+          "pickupAt"
         ]
       }
     }

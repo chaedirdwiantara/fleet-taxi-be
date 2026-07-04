@@ -7,7 +7,10 @@ import { Env } from './config/env';
 import { FleetModule } from './fleet/fleet.module';
 import { GrabModule } from './grab/grab.module';
 import { ImportModule } from './import/import.module';
+import { PartnerApiModule } from './partner-api/partner-api.module';
+import { PartnerPortalModule } from './partner-portal/partner-portal.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseEnvelopeInterceptor } from './common/interceptors/response-envelope.interceptor';
 import { validateEnv } from './config/env';
@@ -41,10 +44,14 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     AuthModule,
     PartnersModule,
+    // Applied via ApiKeyThrottlerGuard on /partner/v1/* controllers only
+    ThrottlerModule.forRoot([{ name: 'partner-api', ttl: 60_000, limit: 60 }]),
     RealtimeModule,
     ImportModule,
     FleetModule,
     GrabModule,
+    PartnerPortalModule,
+    PartnerApiModule,
   ],
   controllers: [HealthController],
   providers: [

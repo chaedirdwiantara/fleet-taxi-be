@@ -1,4 +1,10 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import {
+  CallHandler,
+  ExecutionContext,
+  Injectable,
+  NestInterceptor,
+  StreamableFile,
+} from '@nestjs/common';
 import { Observable, map } from 'rxjs';
 
 export interface Envelope<T> {
@@ -13,12 +19,17 @@ export interface Envelope<T> {
  *
  * Convention: a controller returning exactly `{ data, meta }` is passed
  * through (paginated lists); any other value becomes `data` with no `meta`.
+ * StreamableFile downloads (exports) bypass the envelope.
  */
 @Injectable()
 export class ResponseEnvelopeInterceptor implements NestInterceptor {
-  intercept(_ctx: ExecutionContext, next: CallHandler): Observable<Envelope<unknown>> {
+  intercept(
+    _ctx: ExecutionContext,
+    next: CallHandler,
+  ): Observable<Envelope<unknown> | StreamableFile> {
     return next.handle().pipe(
-      map((body) => {
+      map((body: unknown) => {
+        if (body instanceof StreamableFile) return body;
         if (isDataMeta(body)) {
           return { success: true as const, data: body.data, meta: body.meta };
         }
