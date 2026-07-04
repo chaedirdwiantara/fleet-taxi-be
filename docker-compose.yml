@@ -1,3 +1,6 @@
+# Pinned so the compose project (containers + pgdata volume) survives folder renames
+name: fleet-taxi-dashboard-api
+
 services:
   postgres:
     image: postgres:17
