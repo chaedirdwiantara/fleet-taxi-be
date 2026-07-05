@@ -4,6 +4,8 @@ export interface SessionUser {
   fullName: string | null;
   roles: string[];
   partnerId: number | null;
+  // true when the account must change its password before using the app
+  mustChangePassword: boolean;
 }
 
 declare module 'express-session' {
