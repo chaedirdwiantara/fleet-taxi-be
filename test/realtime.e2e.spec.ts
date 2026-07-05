@@ -34,9 +34,9 @@ describe('realtime gateway auth (M5)', () => {
   const userIds: number[] = [];
   let partnerId: number;
 
-  async function loginCookie(email: string): Promise<string> {
+  async function loginCookie(email: string, path = '/admin/auth/login'): Promise<string> {
     const res = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post(path)
       .send({ email, password: PASSWORD })
       .expect(200);
     const setCookie = res.headers['set-cookie'] as unknown as string[];
@@ -142,7 +142,7 @@ describe('realtime gateway auth (M5)', () => {
   });
 
   it('rejects a non-admin (partner) session', async () => {
-    const cookie = await loginCookie(PARTNER_EMAIL);
+    const cookie = await loginCookie(PARTNER_EMAIL, '/partner/portal/login');
     expect(await probe(cookie)).toBe('rejected');
   });
 

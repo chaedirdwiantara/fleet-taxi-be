@@ -23,14 +23,7 @@ import { SessionGuard } from '../common/guards/session.guard';
 import { parsePagination } from '../common/util/pagination';
 import { PortalExportService } from './export.service';
 import { PortalOrdersService } from './portal-orders.service';
-
-/** Guard-let: portal endpoints require the partner role + a partnerId. */
-function requirePartner(user: SessionUser): number {
-  if (!user.roles.includes('partner') || user.partnerId == null) {
-    throw new UnauthorizedException('Partner account required');
-  }
-  return user.partnerId;
-}
+import { requirePartner } from './portal.util';
 
 @ApiTags('partner-portal')
 @Controller('partner/portal')

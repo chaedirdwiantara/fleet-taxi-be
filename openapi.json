@@ -16,7 +16,7 @@
         ]
       }
     },
-    "/auth/login": {
+    "/admin/auth/login": {
       "post": {
         "operationId": "AuthController_login",
         "parameters": [],
@@ -35,13 +35,13 @@
             "description": ""
           }
         },
-        "summary": "Admin login — sets the session cookie",
+        "summary": "Admin login — sets the session cookie (admin audience only)",
         "tags": [
-          "auth"
+          "admin-auth"
         ]
       }
     },
-    "/auth/logout": {
+    "/admin/auth/logout": {
       "post": {
         "operationId": "AuthController_logout",
         "parameters": [],
@@ -57,11 +57,11 @@
         ],
         "summary": "Destroy the session",
         "tags": [
-          "auth"
+          "admin-auth"
         ]
       }
     },
-    "/auth/me": {
+    "/admin/auth/me": {
       "get": {
         "operationId": "AuthController_me",
         "parameters": [],
@@ -75,9 +75,9 @@
             "session": []
           }
         ],
-        "summary": "Current session user",
+        "summary": "Current admin session user (401 for a non-admin session)",
         "tags": [
-          "auth"
+          "admin-auth"
         ]
       }
     },
@@ -277,14 +277,11 @@
             }
           },
           {
-            "name": "plates",
+            "name": "plate",
             "required": false,
             "in": "query",
             "schema": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
+              "type": "string"
             }
           },
           {
@@ -338,7 +335,7 @@
             }
           },
           {
-            "name": "key",
+            "name": "plate",
             "required": true,
             "in": "query",
             "description": "Row key: normalized plate or manual_<detailId>",
@@ -367,6 +364,54 @@
           }
         ],
         "summary": "One vehicle+day transaction breakdown (cell-click modal)",
+        "tags": [
+          "admin-fleet-gojek"
+        ]
+      }
+    },
+    "/admin/fleet/gojek/summary": {
+      "get": {
+        "operationId": "GojekController_summary",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "string"
+            }
+          },
+          {
+            "name": "day",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 15,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Dashboard aggregates: summary cards + driver activity + charts",
         "tags": [
           "admin-fleet-gojek"
         ]
@@ -614,6 +659,25 @@
               "example": 2026,
               "type": "string"
             }
+          },
+          {
+            "name": "plate",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rentalPartner",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         ],
         "responses": {
@@ -641,6 +705,7 @@
             "required": true,
             "in": "query",
             "schema": {
+              "example": 7,
               "type": "string"
             }
           },
@@ -649,11 +714,12 @@
             "required": true,
             "in": "query",
             "schema": {
+              "example": 2026,
               "type": "string"
             }
           },
           {
-            "name": "key",
+            "name": "compositeKey",
             "required": true,
             "in": "query",
             "description": "plate|city|driver",
@@ -663,11 +729,10 @@
           },
           {
             "name": "day",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
-              "example": 15,
-              "type": "string"
+              "example": 1
             }
           }
         ],
@@ -681,7 +746,7 @@
             "session": []
           }
         ],
-        "summary": "One composite-key+day breakdown",
+        "summary": "Whole-month performance detail for one driver (eye modal)",
         "tags": [
           "admin-fleet-grab"
         ]
@@ -912,6 +977,322 @@
           }
         ],
         "summary": "One own order detail (403 for another partner’s order)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/plates": {
+      "get": {
+        "operationId": "PortalPlatesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List own registered plates (Daftarkan Plat)",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "post": {
+        "operationId": "PortalPlatesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Register a plate (nomor + Type) for the partner",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/plates/{id}": {
+      "delete": {
+        "operationId": "PortalPlatesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Remove one own registered plate",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/fleet/gojek/grid": {
+      "get": {
+        "operationId": "PortalFleetController_gojekGrid",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Own Gojek 31-day deposit grid (scoped to registered plates)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/fleet/gojek/cell": {
+      "get": {
+        "operationId": "PortalFleetController_gojekCell",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "string"
+            }
+          },
+          {
+            "name": "plate",
+            "required": true,
+            "in": "query",
+            "description": "Row key: normalized plate or manual_<detailId>",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "day",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 15,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Own Gojek vehicle+day breakdown",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/fleet/gojek/summary": {
+      "get": {
+        "operationId": "PortalFleetController_gojekSummary",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "string"
+            }
+          },
+          {
+            "name": "day",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 15,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Own Gojek dashboard aggregates (cards + driver activity + charts)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/fleet/grab/grid": {
+      "get": {
+        "operationId": "PortalFleetController_grabGrid",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Own Grab earnings grid (scoped to registered plates)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/fleet/grab/cell": {
+      "get": {
+        "operationId": "PortalFleetController_grabCell",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "string"
+            }
+          },
+          {
+            "name": "compositeKey",
+            "required": true,
+            "in": "query",
+            "description": "plate|city|driver",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "day",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Own Grab driver whole-month performance detail",
         "tags": [
           "partner-portal"
         ]
@@ -1150,6 +1531,24 @@
             "description": "Grab only"
           }
         }
+      },
+      "CreatePlateDto": {
+        "type": "object",
+        "properties": {
+          "plateNumber": {
+            "type": "string",
+            "example": "B 1793 SCP",
+            "description": "Nomor plat (as entered)"
+          },
+          "vehicleType": {
+            "type": "string",
+            "example": "Premium - BYD M6",
+            "description": "Type (jenis kendaraan)"
+          }
+        },
+        "required": [
+          "plateNumber"
+        ]
       },
       "CreatePartnerOrderDto": {
         "type": "object",

@@ -1,7 +1,9 @@
 /**
- * Legacy-math fixture tests for the Gojek grid (M3 deliverable).
+ * Legacy-math fixture tests for the Gojek + Grab grids (M3 deliverable).
  * Every expected number below is hand-computed from the legacy
- * AdminFleetMonitoringController::getIndex rules.
+ * AdminFleetMonitoring(Grab)Controller::getIndex rules. These assert the
+ * internal service shape (the math engine); the HTTP presenter shape and
+ * partner scoping are covered in partner.e2e.spec.ts.
  * Needs docker-compose Postgres + Redis and applied migrations.
  */
 import { INestApplication } from '@nestjs/common';
@@ -14,6 +16,8 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { DatabaseService } from '../src/db/database.service';
 import { dropDetailPartition, ensureDetailPartition } from '../src/db/partitions';
+import { GojekGridService } from '../src/fleet/gojek-grid.service';
+import { GrabGridService } from '../src/grab/grab-grid.service';
 import {
   fleetExceptions,
   fleetImportDetails,
@@ -37,6 +41,8 @@ const GRAB_MONTH = 6;
 describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
   let app: INestApplication;
   let database: DatabaseService;
+  let gojek: GojekGridService;
+  let grab: GrabGridService;
   let agent: ReturnType<typeof request.agent>;
   let adminId: number;
   const cleanupTargetIds: number[] = [];
@@ -47,6 +53,8 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     configureApp(app);
     await app.init();
     database = app.get(DatabaseService);
+    gojek = app.get(GojekGridService);
+    grab = app.get(GrabGridService);
     const { db } = database;
 
     // admin session
@@ -62,7 +70,10 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     adminId = admin!.id;
     await db.insert(userRoles).values({ userId: adminId, roleId: adminRole!.id });
     agent = request.agent(app.getHttpServer());
-    await agent.post('/auth/login').send({ email: ADMIN_EMAIL, password: PASSWORD }).expect(200);
+    await agent
+      .post('/admin/auth/login')
+      .send({ email: ADMIN_EMAIL, password: PASSWORD })
+      .expect(200);
 
     // -- Gojek fixture (period 2032-05) -----------------------------------
     await ensureDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
@@ -240,97 +251,99 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
   });
 
   it('computes inferred daily target, calculated target and outstanding for G7771KA', async () => {
-    const res = await agent.get(`/admin/fleet/gojek/grid?month=${MONTH}&year=${YEAR}`).expect(200);
-    const row = res.body.data.rows.find((r: { key: string }) => r.key === 'G7771KA');
+    const grid = await gojek.buildGrid(MONTH, YEAR);
+    const row = grid.rows.find((r) => r.key === 'G7771KA');
     expect(row).toBeDefined();
 
     // inferred: no manual target -> round(950000/2) = 475000
-    expect(row.dailyTarget).toBe(475000);
+    expect(row!.dailyTarget).toBe(475000);
     // counted month total: 400000+480000 deductions + 100000 manual counted
-    expect(row.totalDeduction).toBe(980000);
+    expect(row!.totalDeduction).toBe(980000);
     // display total also includes the uncounted 50000
-    expect(row.totalDisplayAmount).toBe(1030000);
+    expect(row!.totalDisplayAmount).toBe(1030000);
     // active range: min from due day 3 (uncounted manual on 7 must NOT extend range beyond counted 6)
-    expect(row.minDay).toBe(3);
+    expect(row!.minDay).toBe(3);
     // targetDays = (31 - 3 + 1) - 1 free-day exception = 28 -> 475000 x 28
-    expect(row.calculatedTarget).toBe(475000 * 28);
+    expect(row!.calculatedTarget).toBe(475000 * 28);
     // exception on day 5 ignored (money present); day 10 kept
-    expect(row.exceptions['10']).toBeDefined();
-    expect(row.exceptions['5']).toBeUndefined();
+    expect(row!.exceptions[10]).toBeDefined();
+    expect(row!.exceptions[5]).toBeUndefined();
     // outstanding = 475000 x 2 deduction-days - 980000 - 50000 = -80000
-    expect(row.outstanding).toBe(-80000);
+    expect(row!.outstanding).toBe(-80000);
     // daily cells
-    expect(row.dailyData['7']).toBe(50000); // display
-    expect(row.dailyCountedData['7']).toBe(0); // uncounted
-    expect(row.manualPaymentDisplayOnlyDays).toContain(7);
+    expect(row!.dailyData[7]).toBe(50000); // display
+    expect(row!.dailyCountedData[7]).toBe(0); // uncounted
+    expect(row!.manualPaymentDisplayOnlyDays).toContain(7);
   });
 
   it('manual fleet_target wins over inference for G7772KB', async () => {
-    const res = await agent.get(`/admin/fleet/gojek/grid?month=${MONTH}&year=${YEAR}`).expect(200);
-    const row = res.body.data.rows.find((r: { key: string }) => r.key === 'G7772KB');
-    expect(row.dailyTarget).toBe(300000);
-    expect(row.rentalPartner).toBe(`${RUN}-RENTAL`);
+    const grid = await gojek.buildGrid(MONTH, YEAR);
+    const row = grid.rows.find((r) => r.key === 'G7772KB');
+    expect(row!.dailyTarget).toBe(300000);
+    expect(row!.rentalPartner).toBe(`${RUN}-RENTAL`);
     // minDay 10 -> targetDays 22 -> 300000 x 22
-    expect(row.calculatedTarget).toBe(300000 * 22);
+    expect(row!.calculatedTarget).toBe(300000 * 22);
     // outstanding = 300000 x 1 - 300000 - 0 = 0
-    expect(row.outstanding).toBe(0);
+    expect(row!.outstanding).toBe(0);
   });
 
   it('separates unplated manual payments as synthetic manual_<id> rows', async () => {
-    const res = await agent.get(`/admin/fleet/gojek/grid?month=${MONTH}&year=${YEAR}`).expect(200);
-    const row = res.body.data.rows.find((r: { key: string }) => r.key.startsWith('manual_'));
+    const grid = await gojek.buildGrid(MONTH, YEAR);
+    const row = grid.rows.find((r) => r.key.startsWith('manual_'));
     expect(row).toBeDefined();
-    expect(row.vehicle).toBe('');
-    expect(row.detailId).toBeGreaterThan(0);
-    expect(row.dailyTarget).toBe(488000); // fallback
-    expect(row.outstanding).toBe(0); // no all-time stats for synthetic keys (legacy behavior)
+    expect(row!.vehicle).toBe('');
+    expect(row!.detailId).toBeGreaterThan(0);
+    expect(row!.dailyTarget).toBe(488000); // fallback
+    expect(row!.outstanding).toBe(0); // no all-time stats for synthetic keys (legacy behavior)
   });
 
   it('serves the cell-click breakdown', async () => {
-    const res = await agent
-      .get(`/admin/fleet/gojek/cell?month=${MONTH}&year=${YEAR}&key=G7771KA&day=7`)
-      .expect(200);
-    const bucket = res.body.data;
-    expect(bucket.displayTotal).toBe(50000);
-    expect(bucket.countedTotal).toBe(0);
-    expect(bucket.hasDisplayOnlyManualPayment).toBe(true);
-    expect(bucket.items[0].label).toBe('Manual Payment (Tidak Masuk Setoran)');
-    expect(bucket.items[0].note).toBe('promo');
+    const bucket = await gojek.getCell(MONTH, YEAR, 'G7771KA', 7);
+    expect(bucket).not.toBeNull();
+    expect(bucket!.displayTotal).toBe(50000);
+    expect(bucket!.countedTotal).toBe(0);
+    expect(bucket!.hasDisplayOnlyManualPayment).toBe(true);
+    expect(bucket!.items[0]!.label).toBe('Manual Payment (Tidak Masuk Setoran)');
+    expect(bucket!.items[0]!.note).toBe('promo');
   });
 
   it('filters by rental partner incl. "(Tanpa Rental Partner)"', async () => {
-    const res = await agent
-      .get(
-        `/admin/fleet/gojek/grid?month=${MONTH}&year=${YEAR}&rentalPartner=${encodeURIComponent(`${RUN}-RENTAL`)}`,
-      )
-      .expect(200);
-    expect(res.body.data.rows).toHaveLength(1);
-    expect(res.body.data.rows[0].key).toBe('G7772KB');
+    const only = await gojek.buildGrid(MONTH, YEAR, { rentalPartners: [`${RUN}-RENTAL`] });
+    expect(only.rows).toHaveLength(1);
+    expect(only.rows[0]!.key).toBe('G7772KB');
 
-    const none = await agent
-      .get(
-        `/admin/fleet/gojek/grid?month=${MONTH}&year=${YEAR}&rentalPartner=${encodeURIComponent('(Tanpa Rental Partner)')}`,
-      )
-      .expect(200);
-    const keys = none.body.data.rows.map((r: { key: string }) => r.key);
+    const none = await gojek.buildGrid(MONTH, YEAR, {
+      rentalPartners: ['(Tanpa Rental Partner)'],
+    });
+    const keys = none.rows.map((r) => r.key);
     expect(keys).toContain('G7771KA');
     expect(keys).not.toContain('G7772KB');
   });
 
+  it('scopePlates restricts the grid to an allowlist (partner scoping primitive)', async () => {
+    const scoped = await gojek.buildGrid(MONTH, YEAR, { scopePlates: ['G7772KB'] });
+    const keys = scoped.rows.map((r) => r.key);
+    expect(keys).toContain('G7772KB');
+    expect(keys).not.toContain('G7771KA');
+
+    // an empty allowlist yields an empty grid (partner with no registered plates)
+    const empty = await gojek.buildGrid(MONTH, YEAR, { scopePlates: [] });
+    expect(empty.rows).toHaveLength(0);
+    expect(empty.totalOutstanding).toBe(0);
+  });
+
   it('builds the Grab composite-key pivot with summed summary columns', async () => {
-    const res = await agent
-      .get(`/admin/fleet/grab/grid?month=${GRAB_MONTH}&year=${YEAR}`)
-      .expect(200);
-    const row = res.body.data.rows.find((r: { key: string }) => r.key === 'B5678ZZ|Jakarta|SITI');
+    const grid = await grab.buildGrid(GRAB_MONTH, YEAR);
+    const row = grid.rows.find((r) => r.key === 'B5678ZZ|Jakarta|SITI');
     expect(row).toBeDefined();
-    expect(row.dailyData['1']).toBe(100000);
-    expect(row.dailyData['2']).toBe(200000);
-    expect(row.totalEarningCollected).toBe(300000);
-    expect(row.totalIncentive).toBe(30000);
-    expect(row.totalRides).toBe(12);
-    expect(row.details.bookings).toBe(14);
-    expect(row.rentalPartner).toBe(`${RUN}-GRENTAL`);
-    expect(res.body.data.totalEarnings).toBe(300000);
+    expect(row!.dailyData[1]).toBe(100000);
+    expect(row!.dailyData[2]).toBe(200000);
+    expect(row!.totalEarningCollected).toBe(300000);
+    expect(row!.totalIncentive).toBe(30000);
+    expect(row!.totalRides).toBe(12);
+    expect(row!.details.bookings).toBe(14);
+    expect(row!.rentalPartner).toBe(`${RUN}-GRENTAL`);
+    expect(grid.totalEarnings).toBe(300000);
   });
 
   it('upserts and reads target metadata via /targets/:plate', async () => {

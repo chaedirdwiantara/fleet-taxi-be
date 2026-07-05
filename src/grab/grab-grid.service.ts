@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { normalizePlate } from '../common/util/plate';
 import { byteCompare } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
@@ -42,6 +42,10 @@ export interface GrabGridResult {
   totalEarnings: number;
   totalIncentives: number;
   totalDriverFare: number;
+  // Filter dropdown options — computed from the FULL pivot BEFORE row filtering,
+  // so selecting one partner/city doesn't drop the others (legacy behavior).
+  availableRentalPartners: string[];
+  availableCities: string[];
 }
 
 /** Faithful port of legacy AdminFleetMonitoringGrabController::getIndex. */
@@ -49,13 +53,45 @@ export interface GrabGridResult {
 export class GrabGridService {
   constructor(private readonly database: DatabaseService) {}
 
-  async buildGrid(month: number, year: number): Promise<GrabGridResult> {
+  async buildGrid(
+    month: number,
+    year: number,
+    filters: {
+      rentalPartners?: string[];
+      plates?: string[];
+      plate?: string;
+      // Server-derived plate allowlist (partner scoping); see gojek-grid.service.
+      scopePlates?: string[];
+    } = {},
+  ): Promise<GrabGridResult> {
     const { db } = this.database;
+
+    if (filters.scopePlates !== undefined && filters.scopePlates.length === 0) {
+      return {
+        month,
+        year,
+        daysInMonth: new Date(Date.UTC(year, month, 0)).getUTCDate(),
+        rows: [],
+        totalEarnings: 0,
+        totalIncentives: 0,
+        totalDriverFare: 0,
+        availableRentalPartners: [],
+        availableCities: [],
+      };
+    }
 
     const rawRows = await db
       .select()
       .from(grabImportDetails)
-      .where(and(eq(grabImportDetails.periodYear, year), eq(grabImportDetails.periodMonth, month)));
+      .where(
+        and(
+          eq(grabImportDetails.periodYear, year),
+          eq(grabImportDetails.periodMonth, month),
+          filters.scopePlates?.length
+            ? inArray(grabImportDetails.plateNumberNorm, filters.scopePlates)
+            : undefined,
+        ),
+      );
 
     const pivot = new Map<string, GrabVehicleRow>();
 
@@ -136,12 +172,29 @@ export class GrabGridService {
     }
 
     // legacy strcmp order: rental_partner -> city -> plate_number
-    const rows = [...pivot.values()].sort(
+    let rows = [...pivot.values()].sort(
       (a, b) =>
         byteCompare(a.rentalPartner, b.rentalPartner) ||
         byteCompare(a.city, b.city) ||
         byteCompare(a.plateNumber, b.plateNumber),
     );
+
+    // dropdown options from the FULL set, before any row filtering
+    const availableRentalPartners = [
+      ...new Set(rows.map((r) => r.rentalPartner).filter((p) => p !== '')),
+    ].sort();
+    const availableCities = [...new Set(rows.map((r) => r.city).filter((c) => c !== ''))].sort();
+
+    if (filters.rentalPartners?.length) {
+      rows = rows.filter((r) => filters.rentalPartners!.includes(r.rentalPartner));
+    }
+    if (filters.plates?.length) {
+      rows = rows.filter((r) => filters.plates!.includes(r.plateNumber));
+    }
+    const plateQuery = normalizePlate(filters.plate);
+    if (plateQuery) {
+      rows = rows.filter((r) => r.plateNumber.includes(plateQuery));
+    }
 
     return {
       month,
@@ -151,18 +204,19 @@ export class GrabGridService {
       totalEarnings: rows.reduce((s, r) => s + r.totalEarningCollected, 0),
       totalIncentives: rows.reduce((s, r) => s + r.totalIncentive, 0),
       totalDriverFare: rows.reduce((s, r) => s + r.totalDriverFare, 0),
+      availableRentalPartners,
+      availableCities,
     };
   }
 
-  async getCell(month: number, year: number, key: string, day: number) {
-    const grid = await this.buildGrid(month, year);
-    const row = grid.rows.find((r) => r.key === key);
-    if (!row) return null;
-    return {
-      key,
-      day,
-      earning: row.dailyData[day] ?? 0,
-      details: row.details,
-    };
+  /** Whole-month row for the composite key (drives the "eye" driver-detail modal). */
+  async findRow(
+    month: number,
+    year: number,
+    key: string,
+    scopePlates?: string[],
+  ): Promise<GrabVehicleRow | null> {
+    const grid = await this.buildGrid(month, year, { scopePlates });
+    return grid.rows.find((r) => r.key === key) ?? null;
   }
 }

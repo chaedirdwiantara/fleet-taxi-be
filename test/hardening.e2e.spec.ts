@@ -71,7 +71,7 @@ describe('hardening: auth + rate-limit edge cases (M5)', () => {
 
   it('rejects login for an inactive user (same generic 401)', async () => {
     const res = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/admin/auth/login')
       .send({ email: `${RUN}-inactive@test.example`, password: PASSWORD })
       .expect(401);
     expect(res.body.error.code).toBe('UNAUTHENTICATED');

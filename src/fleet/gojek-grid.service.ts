@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { normalizePlate } from '../common/util/plate';
 import { byteCompare } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
@@ -47,9 +47,21 @@ export class GojekGridService {
   async buildGrid(
     month: number,
     year: number,
-    filters: { rentalPartners?: string[]; plates?: string[] } = {},
+    filters: {
+      rentalPartners?: string[];
+      plates?: string[];
+      plate?: string;
+      // Server-derived plate allowlist (partner scoping). `undefined` = no scope
+      // (admin); an EMPTY array = a partner with no registered plates → empty grid.
+      // Never populate this from client input.
+      scopePlates?: string[];
+    } = {},
   ): Promise<GojekGridResult> {
     const { db } = this.database;
+
+    if (filters.scopePlates !== undefined && filters.scopePlates.length === 0) {
+      return this.emptyGrid(month, year);
+    }
 
     const rawRows = await db
       .select()
@@ -63,6 +75,9 @@ export class GojekGridService {
             ilike(fleetImportDetails.type, '%due%'),
             ilike(fleetImportDetails.type, '%manual payment%'),
           ),
+          filters.scopePlates?.length
+            ? inArray(fleetImportDetails.vehiclePlateNorm, filters.scopePlates)
+            : undefined,
         ),
       );
 
@@ -285,6 +300,11 @@ export class GojekGridService {
     if (filters.plates?.length) {
       rows = rows.filter((r) => filters.plates!.includes(r.vehicle));
     }
+    // FilterBar free-text plate search (substring on the normalized plate).
+    const plateQuery = normalizePlate(filters.plate);
+    if (plateQuery) {
+      rows = rows.filter((r) => r.vehicle.includes(plateQuery));
+    }
 
     // legacy strcmp order: rental_partner then driver_name (region_name
     // tiebreaker is intentionally dropped — region resolution is out of R1 scope)
@@ -328,13 +348,35 @@ export class GojekGridService {
     };
   }
 
+  /** Zeroed grid — a partner with no registered plates sees Rp 0 everywhere. */
+  private emptyGrid(month: number, year: number): GojekGridResult {
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const dailyTotals: Record<number, number> = {};
+    for (let d = 1; d <= 31; d++) dailyTotals[d] = 0;
+    return {
+      month,
+      year,
+      daysInMonth,
+      rows: [],
+      dailyTotals,
+      totalDeduction: 0,
+      totalCalculatedTarget: 0,
+      totalOutstanding: 0,
+      availableRentalPartners: [NO_RENTAL_PARTNER],
+      availablePlates: [],
+      topPerformers: [],
+      bottomPerformers: [],
+    };
+  }
+
   async getCell(
     month: number,
     year: number,
     plateKey: string,
     day: number,
+    scopePlates?: string[],
   ): Promise<DailyDetailBucket | null> {
-    const grid = await this.buildGrid(month, year);
+    const grid = await this.buildGrid(month, year, { scopePlates });
     const row = grid.rows.find((r) => r.key === plateKey);
     return row?.dailyDetails[day] ?? null;
   }

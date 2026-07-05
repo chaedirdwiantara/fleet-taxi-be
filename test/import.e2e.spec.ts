@@ -68,7 +68,10 @@ describe('import pipeline (M2 deliverable)', () => {
     await db.insert(userRoles).values({ userId: adminId, roleId: adminRole!.id });
 
     agent = request.agent(app.getHttpServer());
-    await agent.post('/auth/login').send({ email: ADMIN_EMAIL, password: PASSWORD }).expect(200);
+    await agent
+      .post('/admin/auth/login')
+      .send({ email: ADMIN_EMAIL, password: PASSWORD })
+      .expect(200);
   }, 30_000);
 
   afterAll(async () => {

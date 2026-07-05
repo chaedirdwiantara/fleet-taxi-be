@@ -29,6 +29,30 @@ export class ImportService {
     return platform === 'gojek' ? fleetImports : grabImports;
   }
 
+  /**
+   * Normalize an import row into ONE consistent batch shape for the API. The
+   * two import tables diverge (fleet_imports.total_rows vs grab_imports.total_row),
+   * so map both to `totalRows` and fill the progress fields the frontend reads.
+   */
+  private toBatch(platform: Platform, row: Record<string, unknown>) {
+    const status = String(row.status);
+    const totalRows = Number((platform === 'gojek' ? row.totalRows : row.totalRow) ?? 0);
+    return {
+      id: Number(row.id),
+      filename: (row.filename as string | null) ?? null,
+      periodMonth: Number(row.periodMonth),
+      periodYear: Number(row.periodYear),
+      totalRows,
+      processed: status === 'done' ? totalRows : 0,
+      percent: status === 'done' ? 100 : 0,
+      status,
+      error: null as string | null,
+      importedBy: row.importedBy == null ? null : Number(row.importedBy),
+      createdAt: row.createdAt as Date,
+      updatedAt: row.updatedAt as Date,
+    };
+  }
+
   async upload(
     platform: Platform,
     file: UploadedFile,
@@ -76,14 +100,19 @@ export class ImportService {
 
   async list(platform: Platform) {
     const table = this.importsTable(platform);
-    return this.database.db.select().from(table).orderBy(desc(table.createdAt)).limit(200);
+    const rows = await this.database.db
+      .select()
+      .from(table)
+      .orderBy(desc(table.createdAt))
+      .limit(200);
+    return rows.map((r) => this.toBatch(platform, r as Record<string, unknown>));
   }
 
   async getById(platform: Platform, id: number) {
     const table = this.importsTable(platform);
     const [row] = await this.database.db.select().from(table).where(eq(table.id, id));
     if (!row) throw new NotFoundException(`Import ${id} not found`);
-    return row;
+    return this.toBatch(platform, row);
   }
 
   async requestRollback(platform: Platform, id: number): Promise<{ queued: true }> {

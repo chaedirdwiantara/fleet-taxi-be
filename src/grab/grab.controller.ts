@@ -10,8 +10,9 @@ import { ApiCookieAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import { CheckPolicies } from '../common/decorators/check-policies.decorator';
 import { PoliciesGuard } from '../common/guards/policies.guard';
 import { SessionGuard } from '../common/guards/session.guard';
-import { parsePeriod } from '../common/util/period';
+import { parsePeriod, toStringArray } from '../common/util/period';
 import { GrabGridService } from './grab-grid.service';
+import { toGrabDriverDetail, toGrabGrid, toGrabPerformers } from './grab-presenter';
 
 @ApiTags('admin-fleet-grab')
 @ApiCookieAuth('session')
@@ -25,31 +26,39 @@ export class GrabController {
   @ApiOperation({ summary: '31-day earnings pivot grid (composite key plate|city|driver)' })
   @ApiQuery({ name: 'month', example: 7 })
   @ApiQuery({ name: 'year', example: 2026 })
-  grid(@Query('month') month: string, @Query('year') year: string) {
+  @ApiQuery({ name: 'rentalPartner', required: false, isArray: true, type: String })
+  @ApiQuery({ name: 'plate', required: false, type: String })
+  async grid(
+    @Query('month') month: string,
+    @Query('year') year: string,
+    @Query('rentalPartner') rentalPartner?: string | string[],
+    @Query('plate') plate?: string,
+  ) {
     const period = parsePeriod(month, year);
-    return this.gridService.buildGrid(period.month, period.year);
+    const result = await this.gridService.buildGrid(period.month, period.year, {
+      rentalPartners: toStringArray(rentalPartner),
+      plate,
+    });
+    return toGrabGrid(result);
   }
 
   @Get('cell')
   @CheckPolicies((a) => a.can('read', 'GrabImport'))
-  @ApiOperation({ summary: 'One composite-key+day breakdown' })
-  @ApiQuery({ name: 'key', description: 'plate|city|driver' })
-  @ApiQuery({ name: 'day', example: 15 })
+  @ApiOperation({ summary: 'Whole-month performance detail for one driver (eye modal)' })
+  @ApiQuery({ name: 'month', example: 7 })
+  @ApiQuery({ name: 'year', example: 2026 })
+  @ApiQuery({ name: 'compositeKey', description: 'plate|city|driver' })
+  @ApiQuery({ name: 'day', required: false, example: 1 })
   async cell(
     @Query('month') month: string,
     @Query('year') year: string,
-    @Query('key') key: string,
-    @Query('day') dayRaw: string,
+    @Query('compositeKey') compositeKey: string,
   ) {
     const period = parsePeriod(month, year);
-    const day = Number(dayRaw);
-    if (!key) throw new BadRequestException('key is required');
-    if (!Number.isInteger(day) || day < 1 || day > 31) {
-      throw new BadRequestException('day must be an integer 1..31');
-    }
-    const cell = await this.gridService.getCell(period.month, period.year, key, day);
-    if (!cell) throw new NotFoundException('No data for that key/day');
-    return cell;
+    if (!compositeKey) throw new BadRequestException('compositeKey is required');
+    const row = await this.gridService.findRow(period.month, period.year, compositeKey);
+    if (!row) throw new NotFoundException('No data for that key');
+    return toGrabDriverDetail(row);
   }
 
   @Get('performers')
@@ -58,10 +67,6 @@ export class GrabController {
   async performers(@Query('month') month: string, @Query('year') year: string) {
     const period = parsePeriod(month, year);
     const grid = await this.gridService.buildGrid(period.month, period.year);
-    const sorted = [...grid.rows].sort((a, b) => b.totalEarningCollected - a.totalEarningCollected);
-    return {
-      topPerformers: sorted.slice(0, 10),
-      bottomPerformers: sorted.slice(-10).reverse(),
-    };
+    return toGrabPerformers(grid.rows);
   }
 }

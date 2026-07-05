@@ -19,6 +19,7 @@ import { PartnersModule } from '../src/partners/partners.module';
 
 const RUN = `e2e${Date.now()}`;
 const ADMIN_EMAIL = `${RUN}-admin@test.example`;
+const PARTNER_EMAIL = `${RUN}-partner@test.example`;
 const PASSWORD = 'test-password-123';
 
 @Controller('test-partner-api')
@@ -59,6 +60,7 @@ describe('auth (M1 deliverable)', () => {
       .from(roles)
       .where(inArray(roles.name, ['admin', 'partner']));
     const adminRoleId = roleRows.find((r) => r.name === 'admin')!.id;
+    const partnerRoleId = roleRows.find((r) => r.name === 'partner')!.id;
 
     const [admin] = await db
       .insert(users)
@@ -76,6 +78,19 @@ describe('auth (M1 deliverable)', () => {
       .values({ code: `${RUN}-PARTNER`, name: 'E2E Partner', type: 'shuttle' })
       .returning();
     seededPartnerId = partner!.id;
+
+    // a partner-portal user (role partner + partnerId) to prove admin-audience gating
+    const [partnerUser] = await db
+      .insert(users)
+      .values({
+        email: PARTNER_EMAIL,
+        passwordHash: await argon2.hash(PASSWORD),
+        fullName: 'E2E Partner User',
+        partnerId: seededPartnerId,
+      })
+      .returning();
+    await db.insert(userRoles).values({ userId: partnerUser!.id, roleId: partnerRoleId });
+    seededUserIds.push(partnerUser!.id);
 
     const apiKeysService = app.get(ApiKeysService);
     rawApiKey = (
@@ -96,34 +111,53 @@ describe('auth (M1 deliverable)', () => {
 
   it('rejects a wrong password with UNAUTHENTICATED envelope', async () => {
     const res = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/admin/auth/login')
       .send({ email: ADMIN_EMAIL, password: 'wrong' })
       .expect(401);
     expect(res.body.error.code).toBe('UNAUTHENTICATED');
   });
 
-  it('logs in, reads /auth/me with the cookie, then logs out', async () => {
+  it('logs in, reads /admin/auth/me with the cookie, then logs out', async () => {
     const agent = request.agent(app.getHttpServer());
 
     const login = await agent
-      .post('/auth/login')
+      .post('/admin/auth/login')
       .send({ email: ADMIN_EMAIL, password: PASSWORD })
       .expect(200);
     expect(login.body.data.email).toBe(ADMIN_EMAIL);
     expect(login.body.data.roles).toContain('admin');
     expect(login.headers['set-cookie']?.[0]).toMatch(/^sid=/);
 
-    const me = await agent.get('/auth/me').expect(200);
+    const me = await agent.get('/admin/auth/me').expect(200);
     expect(me.body.data.email).toBe(ADMIN_EMAIL);
 
-    await agent.post('/auth/logout').expect(200);
-    const after = await agent.get('/auth/me').expect(401);
+    await agent.post('/admin/auth/logout').expect(200);
+    const after = await agent.get('/admin/auth/me').expect(401);
     expect(after.body.error.code).toBe('UNAUTHENTICATED');
   });
 
-  it('blocks /auth/me without a session', async () => {
-    const res = await request(app.getHttpServer()).get('/auth/me').expect(401);
+  it('blocks /admin/auth/me without a session', async () => {
+    const res = await request(app.getHttpServer()).get('/admin/auth/me').expect(401);
     expect(res.body.error.code).toBe('UNAUTHENTICATED');
+  });
+
+  it('enforces the admin audience: a partner cannot log in to /admin/auth nor read /admin/auth/me', async () => {
+    // partner credentials rejected at the admin login (same generic 401)
+    const login = await request(app.getHttpServer())
+      .post('/admin/auth/login')
+      .send({ email: PARTNER_EMAIL, password: PASSWORD })
+      .expect(401);
+    expect(login.body.error.code).toBe('UNAUTHENTICATED');
+
+    // a valid partner-portal session (shared cookie) must still be rejected by /admin/auth/me
+    const agent = request.agent(app.getHttpServer());
+    await agent
+      .post('/partner/portal/login')
+      .send({ email: PARTNER_EMAIL, password: PASSWORD })
+      .expect(200);
+    await agent.get('/partner/portal/me').expect(200); // the session is real
+    const crossed = await agent.get('/admin/auth/me').expect(401); // but not for admin
+    expect(crossed.body.error.code).toBe('UNAUTHENTICATED');
   });
 
   it('authenticates the external surface with a hashed API key', async () => {
