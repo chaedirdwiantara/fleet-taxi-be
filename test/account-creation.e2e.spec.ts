@@ -62,7 +62,12 @@ describe('account creation (super_admin only)', () => {
 
     await db
       .insert(roles)
-      .values([{ name: 'super_admin' }, { name: 'admin' }, { name: 'partner' }, { name: 'finance' }])
+      .values([
+        { name: 'super_admin' },
+        { name: 'admin' },
+        { name: 'partner' },
+        { name: 'finance' },
+      ])
       .onConflictDoNothing();
     const roleRows = await db
       .select()
@@ -92,10 +97,16 @@ describe('account creation (super_admin only)', () => {
     await db.insert(userRoles).values({ userId: plainAdmin!.id, roleId: adminRoleId });
 
     superAgent = request.agent(app.getHttpServer());
-    await superAgent.post('/admin/auth/login').send({ email: SUPER_EMAIL, password: PASSWORD }).expect(200);
+    await superAgent
+      .post('/admin/auth/login')
+      .send({ email: SUPER_EMAIL, password: PASSWORD })
+      .expect(200);
 
     adminAgent = request.agent(app.getHttpServer());
-    await adminAgent.post('/admin/auth/login').send({ email: PLAIN_ADMIN_EMAIL, password: PASSWORD }).expect(200);
+    await adminAgent
+      .post('/admin/auth/login')
+      .send({ email: PLAIN_ADMIN_EMAIL, password: PASSWORD })
+      .expect(200);
   });
 
   afterAll(async () => {
@@ -122,7 +133,10 @@ describe('account creation (super_admin only)', () => {
     await adminAgent.get('/admin/users').expect(403);
     await adminAgent.post('/admin/partners').send({ code: 'X', name: 'X' }).expect(403);
     await adminAgent.get('/admin/partners').expect(403);
-    await adminAgent.post('/admin/partners/1/users').send({ email: 'x@test.example', fullName: 'X', password: 'password123' }).expect(403);
+    await adminAgent
+      .post('/admin/partners/1/users')
+      .send({ email: 'x@test.example', fullName: 'X', password: 'password123' })
+      .expect(403);
     await adminAgent.post('/admin/partners/1/api-keys').send({}).expect(403);
   });
 
@@ -131,7 +145,12 @@ describe('account creation (super_admin only)', () => {
   it('lets a super_admin create an admin/staff user with mustChangePassword=true and no hash', async () => {
     const res = await superAgent
       .post('/admin/users')
-      .send({ email: NEW_ADMIN_EMAIL, fullName: 'New Admin', password: 'password123', roles: ['admin'] })
+      .send({
+        email: NEW_ADMIN_EMAIL,
+        fullName: 'New Admin',
+        password: 'password123',
+        roles: ['admin'],
+      })
       .expect(201);
     expect(res.body.data.email).toBe(NEW_ADMIN_EMAIL);
     expect(res.body.data.roles).toEqual(['admin']);
@@ -143,7 +162,12 @@ describe('account creation (super_admin only)', () => {
   it('creates a finance user (role subset) too', async () => {
     const res = await superAgent
       .post('/admin/users')
-      .send({ email: NEW_FINANCE_EMAIL, fullName: 'New Finance', password: 'password123', roles: ['finance'] })
+      .send({
+        email: NEW_FINANCE_EMAIL,
+        fullName: 'New Finance',
+        password: 'password123',
+        roles: ['finance'],
+      })
       .expect(201);
     expect(res.body.data.roles).toEqual(['finance']);
   });
@@ -151,7 +175,12 @@ describe('account creation (super_admin only)', () => {
   it('rejects a weak (<8 char) password with a validation error', async () => {
     const res = await superAgent
       .post('/admin/users')
-      .send({ email: `${RUN}-weak@test.example`, fullName: 'Weak', password: 'short', roles: ['admin'] })
+      .send({
+        email: `${RUN}-weak@test.example`,
+        fullName: 'Weak',
+        password: 'short',
+        roles: ['admin'],
+      })
       .expect(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
@@ -189,7 +218,10 @@ describe('account creation (super_admin only)', () => {
 
   it('forces first-login change-password: verifies current, clears the flag, and rotates the password', async () => {
     const agent = request.agent(app.getHttpServer());
-    await agent.post('/admin/auth/login').send({ email: NEW_ADMIN_EMAIL, password: 'password123' }).expect(200);
+    await agent
+      .post('/admin/auth/login')
+      .send({ email: NEW_ADMIN_EMAIL, password: 'password123' })
+      .expect(200);
 
     // wrong current password → 401
     await agent
@@ -272,7 +304,11 @@ describe('account creation (super_admin only)', () => {
     const row = res.body.data.find((u: { email: string }) => u.email === PORTAL_EMAIL);
     expect(row).toBeDefined();
     expect(row.roles).toEqual(['partner']);
-    expect(row.partner).toMatchObject({ id: createdPartnerId, code: PARTNER_CODE, type: 'shuttle' });
+    expect(row.partner).toMatchObject({
+      id: createdPartnerId,
+      code: PARTNER_CODE,
+      type: 'shuttle',
+    });
     // partner list must not contain admin/staff users
     expect(res.body.data.every((u: { partner: unknown }) => u.partner !== null)).toBe(true);
   });
