@@ -16,6 +16,87 @@
         ]
       }
     },
+    "/admin/users": {
+      "post": {
+        "operationId": "AdminUsersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAdminUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create an admin/staff user (super_admin only)",
+        "tags": [
+          "admin-users"
+        ]
+      },
+      "get": {
+        "operationId": "AdminUsersController_list",
+        "parameters": [
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "description": "admin = staff users (no partner); partner = partner-portal users",
+            "schema": {
+              "default": "admin",
+              "type": "string",
+              "enum": [
+                "admin",
+                "partner"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List admin/staff (type=admin) or partner-portal (type=partner) users",
+        "tags": [
+          "admin-users"
+        ]
+      }
+    },
     "/admin/auth/login": {
       "post": {
         "operationId": "AuthController_login",
@@ -78,6 +159,162 @@
         "summary": "Current admin session user (401 for a non-admin session)",
         "tags": [
           "admin-auth"
+        ]
+      }
+    },
+    "/auth/change-password": {
+      "post": {
+        "operationId": "ChangePasswordController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Change the current session user’s password (clears mustChangePassword)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/admin/partners": {
+      "post": {
+        "operationId": "AdminPartnersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePartnerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create a partner entity (super_admin only)",
+        "tags": [
+          "admin-partners"
+        ]
+      },
+      "get": {
+        "operationId": "AdminPartnersController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List partners (for the \"pick existing partner\" dropdown)",
+        "tags": [
+          "admin-partners"
+        ]
+      }
+    },
+    "/admin/partners/{id}/users": {
+      "post": {
+        "operationId": "AdminPartnersController_createUser",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePartnerUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create a partner-portal user linked to this partner",
+        "tags": [
+          "admin-partners"
+        ]
+      }
+    },
+    "/admin/partners/{id}/api-keys": {
+      "post": {
+        "operationId": "AdminPartnersController_createApiKey",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApiKeyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Generate an external API key for this partner — rawKey returned ONCE",
+        "tags": [
+          "admin-partners"
         ]
       }
     },
@@ -1457,6 +1694,45 @@
       }
     },
     "schemas": {
+      "CreateAdminUserDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "finance@fleet-taxi.id"
+          },
+          "fullName": {
+            "type": "string",
+            "example": "Budi Finance"
+          },
+          "password": {
+            "type": "string",
+            "example": "initial-password",
+            "minLength": 8
+          },
+          "roles": {
+            "type": "array",
+            "example": [
+              "admin"
+            ],
+            "description": "One or more staff roles (admin, finance, super_admin)",
+            "items": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "finance",
+                "super_admin"
+              ]
+            }
+          }
+        },
+        "required": [
+          "email",
+          "fullName",
+          "password",
+          "roles"
+        ]
+      },
       "LoginDto": {
         "type": "object",
         "properties": {
@@ -1473,6 +1749,96 @@
           "email",
           "password"
         ]
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "properties": {
+          "currentPassword": {
+            "type": "string",
+            "example": "current-password"
+          },
+          "newPassword": {
+            "type": "string",
+            "example": "new-strong-password",
+            "minLength": 8
+          }
+        },
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ]
+      },
+      "CreatePartnerDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "BHISA",
+            "description": "Unique partner code (stored uppercase)"
+          },
+          "name": {
+            "type": "string",
+            "example": "Bhisa Shuttle"
+          },
+          "type": {
+            "type": "string",
+            "example": "shuttle",
+            "description": "shuttle | hotel | ..."
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ]
+      },
+      "CreatePartnerUserDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "portal@bhisa.example"
+          },
+          "fullName": {
+            "type": "string",
+            "example": "Bhisa Portal User"
+          },
+          "password": {
+            "type": "string",
+            "example": "initial-password",
+            "minLength": 8
+          }
+        },
+        "required": [
+          "email",
+          "fullName",
+          "password"
+        ]
+      },
+      "CreateApiKeyDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "example": "Production integration key"
+          },
+          "scopes": {
+            "example": [
+              "pricelist",
+              "order:create",
+              "order:read"
+            ],
+            "description": "Scopes granted to the key",
+            "type": "array",
+            "items": {
+              "type": "array"
+            }
+          },
+          "rateLimit": {
+            "type": "number",
+            "example": 60,
+            "description": "Requests per minute"
+          }
+        }
       },
       "CreateExceptionDto": {
         "type": "object",

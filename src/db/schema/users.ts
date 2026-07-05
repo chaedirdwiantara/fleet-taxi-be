@@ -7,8 +7,12 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   fullName: text('full_name'),
   isActive: boolean('is_active').notNull().default(true),
+  // true for accounts created by an admin; the user is forced to change their
+  // password on first login, which clears this flag.
+  mustChangePassword: boolean('must_change_password').notNull().default(false),
   // set for partner-portal users; row-scoping key
   partnerId: bigint('partner_id', { mode: 'number' }).references(() => partners.id),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

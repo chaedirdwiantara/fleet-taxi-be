@@ -10,6 +10,7 @@ const partnerUser = (partnerId: number) => ({
   fullName: null,
   roles: ['partner'],
   partnerId,
+  mustChangePassword: false,
 });
 
 describe('AbilityFactory (row-scoped RBAC)', () => {
@@ -20,6 +21,7 @@ describe('AbilityFactory (row-scoped RBAC)', () => {
       fullName: null,
       roles: ['super_admin'],
       partnerId: null,
+      mustChangePassword: false,
     });
     expect(ability.can('manage', 'FleetImport')).toBe(true);
     expect(ability.can('delete', subject('Order', { partnerId: 99 }))).toBe(true);
@@ -32,6 +34,7 @@ describe('AbilityFactory (row-scoped RBAC)', () => {
       fullName: null,
       roles: ['admin'],
       partnerId: null,
+      mustChangePassword: false,
     });
     expect(ability.can('manage', 'FleetImport')).toBe(true);
     expect(ability.can('manage', 'GrabTarget')).toBe(true);
