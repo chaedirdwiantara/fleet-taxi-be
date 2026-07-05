@@ -345,6 +345,17 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     await database.db.delete(fleetTargets).where(eq(fleetTargets.vehiclePlateNorm, 'B3333CC'));
   });
 
+  it('validates the target upsert body (concrete DTO, not an inert intersection)', async () => {
+    // non-numeric fleetTarget must be rejected by the global ValidationPipe
+    const bad = await agent
+      .put(`/admin/fleet/gojek/targets/B4444DD`)
+      .send({ fleetTarget: 'abc' })
+      .expect(400);
+    expect(bad.body.error.code).toBe('VALIDATION_ERROR');
+    // unknown properties must be stripped/rejected (forbidNonWhitelisted)
+    await agent.put(`/admin/fleet/gojek/targets/B4444DD`).send({ hacker: true }).expect(400);
+  });
+
   it('manages exceptions via CRUD endpoints', async () => {
     const created = await agent
       .post('/admin/fleet/gojek/exceptions')

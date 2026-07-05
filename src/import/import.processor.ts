@@ -1,9 +1,9 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
-import { and, count, eq, ne } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { DatabaseService } from '../db/database.service';
-import { dropDetailPartition, ensureDetailPartition } from '../db/partitions';
+import { ensureDetailPartition } from '../db/partitions';
 import { fleetImportDetails, fleetImports, grabImportDetails, grabImports } from '../db/schema';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { StorageService } from '../storage/storage.service';
@@ -14,6 +14,10 @@ import { GrabRowMapper } from './parsers/grab.parser';
 
 const BATCH_SIZE = 1000;
 const PROGRESS_EVERY = 500;
+
+type Database = DatabaseService['db'];
+/** The transaction handle Drizzle passes to `db.transaction(cb)` — same query API. */
+type Executor = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 @Processor(IMPORT_QUEUE)
 export class ImportProcessor extends WorkerHost {
@@ -49,6 +53,7 @@ export class ImportProcessor extends WorkerHost {
         .update(importsTable)
         .set({ status: 'processing' })
         .where(eq(importsTable.id, importId));
+      // DDL (partition create) must run outside the insert transaction.
       await ensureDetailPartition(
         this.database,
         platform === 'gojek' ? 'fleet_import_details' : 'grab_import_details',
@@ -57,10 +62,12 @@ export class ImportProcessor extends WorkerHost {
       );
 
       const buffer = await this.storage.read(data.fileKey);
-      const inserted =
-        platform === 'gojek'
-          ? await this.parseGojek(data, buffer)
-          : await this.parseGrab(data, buffer);
+      // One transaction for the whole file: any failure (bad row, missing
+      // header, DB error) atomically rolls back every batch — no orphan rows,
+      // no best-effort compensating delete that could silently fail.
+      const inserted = await db.transaction((tx) =>
+        platform === 'gojek' ? this.parseGojek(tx, data, buffer) : this.parseGrab(tx, data, buffer),
+      );
 
       await db
         .update(importsTable)
@@ -84,12 +91,7 @@ export class ImportProcessor extends WorkerHost {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`import ${importId} (${platform}) failed: ${message}`);
-      // Roll back this batch's rows — isolated by import_id inside one partition
-      const detailsTable = platform === 'gojek' ? fleetImportDetails : grabImportDetails;
-      await db
-        .delete(detailsTable)
-        .where(eq(detailsTable.importId, importId))
-        .catch(() => undefined);
+      // The transaction already rolled back every inserted row; just record status.
       await db
         .update(importsTable)
         .set({ status: 'failed', updatedAt: new Date() })
@@ -98,7 +100,7 @@ export class ImportProcessor extends WorkerHost {
     }
   }
 
-  private async parseGojek(data: ParseJobData, buffer: Buffer): Promise<number> {
+  private async parseGojek(tx: Executor, data: ParseJobData, buffer: Buffer): Promise<number> {
     const { importId, periodYear, periodMonth } = data;
     const mapper = new GojekRowMapper();
     let batch: (typeof fleetImportDetails.$inferInsert)[] = [];
@@ -122,7 +124,7 @@ export class ImportProcessor extends WorkerHost {
         referenceId: parsed.referenceId,
       });
       if (batch.length >= BATCH_SIZE) {
-        await this.database.db.insert(fleetImportDetails).values(batch);
+        await tx.insert(fleetImportDetails).values(batch);
         inserted += batch.length;
         batch = [];
       }
@@ -131,7 +133,7 @@ export class ImportProcessor extends WorkerHost {
       }
     }
     if (batch.length) {
-      await this.database.db.insert(fleetImportDetails).values(batch);
+      await tx.insert(fleetImportDetails).values(batch);
       inserted += batch.length;
     }
     if (!mapper.headerFound) {
@@ -140,14 +142,13 @@ export class ImportProcessor extends WorkerHost {
     return inserted;
   }
 
-  private async parseGrab(data: ParseJobData, buffer: Buffer): Promise<number> {
+  private async parseGrab(tx: Executor, data: ParseJobData, buffer: Buffer): Promise<number> {
     const { importId, periodYear, periodMonth } = data;
     const mapper = new GrabRowMapper();
-    const { db } = this.database;
 
     // Legacy dedup: skip rows whose (date, plate, driver) already exist.
     // One partition holds a month of ≤~500 vehicles, so preloading is cheap.
-    const existing = await db
+    const existing = await tx
       .select({
         date: grabImportDetails.date,
         plate: grabImportDetails.plateNumber,
@@ -198,7 +199,7 @@ export class ImportProcessor extends WorkerHost {
         compositeKey: parsed.compositeKey,
       });
       if (batch.length >= BATCH_SIZE) {
-        await db.insert(grabImportDetails).values(batch);
+        await tx.insert(grabImportDetails).values(batch);
         inserted += batch.length;
         batch = [];
       }
@@ -207,7 +208,7 @@ export class ImportProcessor extends WorkerHost {
       }
     }
     if (batch.length) {
-      await db.insert(grabImportDetails).values(batch);
+      await tx.insert(grabImportDetails).values(batch);
       inserted += batch.length;
     }
     if (!mapper.headerFound) {
@@ -222,32 +223,14 @@ export class ImportProcessor extends WorkerHost {
   }
 
   private async rollback(data: RollbackJobData): Promise<void> {
-    const { platform, importId, periodYear, periodMonth } = data;
+    const { platform, importId } = data;
     const importsTable = platform === 'gojek' ? fleetImports : grabImports;
-    const detailTableName = platform === 'gojek' ? 'fleet_import_details' : 'grab_import_details';
-    const { db } = this.database;
 
-    // Parent delete cascades details (FK ON DELETE CASCADE), pruned to one partition
-    await db.delete(importsTable).where(eq(importsTable.id, importId));
-
-    // Fast path: if no other import batch remains for this period, drop the child partition
-    const [remaining] = await db
-      .select({ n: count() })
-      .from(importsTable)
-      .where(
-        and(
-          eq(importsTable.periodYear, periodYear),
-          eq(importsTable.periodMonth, periodMonth),
-          ne(importsTable.id, importId),
-        ),
-      );
-    if (remaining && Number(remaining.n) === 0) {
-      await dropDetailPartition(this.database, detailTableName, periodYear, periodMonth).catch(
-        () => undefined,
-      );
-      // recreate lazily on next import via ensureDetailPartition
-    }
-
+    // Deleting the parent cascades its detail rows (FK ON DELETE CASCADE),
+    // confined to the period partition. We deliberately do NOT DROP the child
+    // partition: across multiple worker instances a DROP could race a
+    // concurrent import into the same period and destroy its just-inserted rows.
+    await this.database.db.delete(importsTable).where(eq(importsTable.id, importId));
     this.logger.log(`rollback of ${platform} import ${importId} complete`);
   }
 }

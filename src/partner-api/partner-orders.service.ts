@@ -1,10 +1,5 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { count, desc, eq } from 'drizzle-orm';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { and, count, desc, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { DatabaseService } from '../db/database.service';
 import { orders } from '../db/schema';
@@ -15,10 +10,14 @@ export interface CreateOrderInput {
   destinationCode: string;
   carTypesId: number;
   pickupAt: string; // ISO 8601 or legacy "YYYY-MM-DD HH:mm:ss" (Asia/Jakarta)
-  passengerDetails?: unknown;
+  passengerDetails?: Record<string, unknown>;
 }
 
-/** All queries scoped by the API key's partnerId; cross-partner reads → 403. */
+// Guard the free-form jsonb blob on the external surface so a partner cannot
+// persist an arbitrarily large payload per order.
+const MAX_PASSENGER_DETAILS_BYTES = 8 * 1024;
+
+/** All queries scoped by the API key's partnerId; wrong-partner detail → 404. */
 @Injectable()
 export class PartnerOrdersService {
   constructor(
@@ -41,6 +40,13 @@ export class PartnerOrdersService {
   async create(partnerId: number, input: CreateOrderInput) {
     const quote = this.pricelistService.quote(input.pickupCode, input.destinationCode);
     const pickupAt = this.parsePickupAt(input.pickupAt);
+
+    if (
+      input.passengerDetails &&
+      JSON.stringify(input.passengerDetails).length > MAX_PASSENGER_DETAILS_BYTES
+    ) {
+      throw new BadRequestException('passengerDetails exceeds the maximum allowed size');
+    }
 
     const [row] = await this.database.db
       .insert(orders)
@@ -78,9 +84,13 @@ export class PartnerOrdersService {
   }
 
   async detail(partnerId: number, orderId: number) {
-    const [row] = await this.database.db.select().from(orders).where(eq(orders.id, orderId));
+    // Scope the fetch by partnerId so a wrong-partner order is indistinguishable
+    // from a missing one (uniform 404) — no cross-partner existence oracle.
+    const [row] = await this.database.db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.id, orderId), eq(orders.partnerId, partnerId)));
     if (!row) throw new NotFoundException(`Order ${orderId} not found`);
-    if (row.partnerId !== partnerId) throw new ForbiddenException('Cross-partner access denied');
     return row;
   }
 }

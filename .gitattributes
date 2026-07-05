@@ -1,0 +1,9 @@
+# Normalize line endings to LF for all text files (CI runs on Linux).
+* text=auto eol=lf
+
+# Binary/lock files left untouched
+pnpm-lock.yaml text eol=lf
+*.png binary
+*.jpg binary
+*.pdf binary
+*.xlsx binary

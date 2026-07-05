@@ -13,6 +13,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
+import { parsePagination } from '../../common/util/pagination';
 import { CreatePartnerOrderDto } from '../dto/partner-api.dto';
 import { PartnerOrdersService } from '../partner-orders.service';
 import { ApiKeyThrottlerGuard, RequireScopes, ScopesGuard } from '../scopes';
@@ -42,14 +43,13 @@ export class PartnerOrdersController {
     @Query('page') pageRaw?: string,
     @Query('pageSize') pageSizeRaw?: string,
   ) {
-    const page = Math.max(1, Number(pageRaw) || 1);
-    const pageSize = Math.min(200, Math.max(1, Number(pageSizeRaw) || 50));
+    const { page, pageSize } = parsePagination(pageRaw, pageSizeRaw);
     return this.ordersService.list(req.partner!.id, page, pageSize);
   }
 
   @Get(':id')
   @RequireScopes('order:read')
-  @ApiOperation({ summary: "One order's detail (own orders only — cross-partner returns 403)" })
+  @ApiOperation({ summary: "One order's detail (own orders only — 404 for any other order)" })
   detail(@Req() req: Request, @Param('id', ParseIntPipe) id: number) {
     return this.ordersService.detail(req.partner!.id, id);
   }

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { normalizePlate } from '../common/util/plate';
+import { byteCompare } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
 import { grabImportDetails, grabTargets } from '../db/schema';
 
@@ -134,11 +135,12 @@ export class GrabGridService {
       }
     }
 
+    // legacy strcmp order: rental_partner -> city -> plate_number
     const rows = [...pivot.values()].sort(
       (a, b) =>
-        a.rentalPartner.localeCompare(b.rentalPartner) ||
-        a.city.localeCompare(b.city) ||
-        a.plateNumber.localeCompare(b.plateNumber),
+        byteCompare(a.rentalPartner, b.rentalPartner) ||
+        byteCompare(a.city, b.city) ||
+        byteCompare(a.plateNumber, b.plateNumber),
     );
 
     return {

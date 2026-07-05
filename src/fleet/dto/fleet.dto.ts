@@ -25,8 +25,14 @@ export class CreateExceptionDto {
   isBebasSetoran?: boolean;
 }
 
-export class UpsertGojekTargetDto {
-  @ApiPropertyOptional({ description: 'Daily target in integer rupiah' })
+/**
+ * Superset target upsert DTO (Gojek fields + Grab fields, all optional).
+ * A single concrete class — NOT an intersection type — so the global
+ * ValidationPipe actually runs (an intersection erases to `Object` at runtime,
+ * which ValidationPipe skips). The service picks the relevant subset per platform.
+ */
+export class UpsertTargetDto {
+  @ApiPropertyOptional({ description: 'Daily target in integer rupiah (Gojek)' })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -38,12 +44,12 @@ export class UpsertGojekTargetDto {
   @IsString()
   rentalPartner?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Gojek only' })
   @IsOptional()
   @IsString()
   deliveryBatch?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Gojek only' })
   @IsOptional()
   @IsString()
   serviceArea?: string;
@@ -53,25 +59,13 @@ export class UpsertGojekTargetDto {
   @IsString()
   vehicleType?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Gojek only' })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   regionId?: number;
-}
 
-export class UpsertGrabTargetDto {
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  rentalPartner?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  vehicleType?: string;
-
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Grab only' })
   @IsOptional()
   @IsString()
   city?: string;

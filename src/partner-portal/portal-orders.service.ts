@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { and, count, desc, eq, gte, sql } from 'drizzle-orm';
 import { DatabaseService } from '../db/database.service';
 import { orders, partners } from '../db/schema';
@@ -47,11 +47,13 @@ export class PortalOrdersService {
   }
 
   async detail(partnerId: number, orderId: number) {
-    const [row] = await this.database.db.select().from(orders).where(eq(orders.id, orderId));
+    // Scoped fetch → wrong-partner and missing orders both return 404, so a
+    // partner cannot probe the existence of another partner's orders.
+    const [row] = await this.database.db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.id, orderId), eq(orders.partnerId, partnerId)));
     if (!row) throw new NotFoundException(`Order ${orderId} not found`);
-    if (row.partnerId !== partnerId) {
-      throw new ForbiddenException('Order belongs to another partner');
-    }
     return row;
   }
 

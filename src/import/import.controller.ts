@@ -28,12 +28,7 @@ import { SessionGuard } from '../common/guards/session.guard';
 import { SessionUser } from '../auth/session.types';
 import { CreateImportDto } from './dto/create-import.dto';
 import { ImportService, UploadedFile } from './import.service';
-import { Platform } from './import.types';
-
-function parsePlatform(value: string): Platform {
-  if (value === 'gojek' || value === 'grab') return value;
-  throw new BadRequestException(`Unknown platform: ${value} (expected gojek|grab)`);
-}
+import { parsePlatform } from './import.types';
 
 @ApiTags('admin-fleet-imports')
 @ApiCookieAuth('session')

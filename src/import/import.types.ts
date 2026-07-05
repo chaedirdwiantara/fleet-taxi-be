@@ -1,6 +1,14 @@
+import { BadRequestException } from '@nestjs/common';
+
 export const IMPORT_QUEUE = 'fleet-import';
 
 export type Platform = 'gojek' | 'grab';
+
+/** Validates the `:platform` route param. Shared by every platform-scoped controller. */
+export function parsePlatform(value: string): Platform {
+  if (value === 'gojek' || value === 'grab') return value;
+  throw new BadRequestException(`Unknown platform: ${value} (expected gojek|grab)`);
+}
 
 export interface ParseJobData {
   platform: Platform;

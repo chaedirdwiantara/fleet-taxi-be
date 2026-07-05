@@ -20,6 +20,7 @@ import { LoginDto } from '../auth/dto/login.dto';
 import { SessionUser } from '../auth/session.types';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SessionGuard } from '../common/guards/session.guard';
+import { parsePagination } from '../common/util/pagination';
 import { PortalExportService } from './export.service';
 import { PortalOrdersService } from './portal-orders.service';
 
@@ -102,8 +103,7 @@ export class PortalController {
     @Query('pageSize') pageSizeRaw?: string,
     @Query('tripStatus') tripStatus?: string,
   ) {
-    const page = Math.max(1, Number(pageRaw) || 1);
-    const pageSize = Math.min(200, Math.max(1, Number(pageSizeRaw) || 50));
+    const { page, pageSize } = parsePagination(pageRaw, pageSizeRaw);
     return this.ordersService.list(requirePartner(user), { page, pageSize, tripStatus });
   }
 

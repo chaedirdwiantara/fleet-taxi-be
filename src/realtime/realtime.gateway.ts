@@ -1,12 +1,14 @@
 import { Logger } from '@nestjs/common';
 import {
-  MessageBody,
   ConnectedSocket,
+  MessageBody,
+  OnGatewayConnection,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { SessionUser } from '../auth/session.types';
 
 export interface ImportProgressPayload {
   importId: number;
@@ -26,22 +28,42 @@ export interface ImportFailedPayload {
   error: string;
 }
 
+/** Import events are admin-only, so only admin sessions may connect/subscribe. */
+function isFleetAdmin(user: SessionUser): boolean {
+  return user.roles.includes('admin') || user.roles.includes('super_admin');
+}
+
 /**
  * R1 event catalog (server→client only): import:progress|done|failed.
- * Clients join a per-import room. Future GPS events are reserved, not built.
+ * CORS is pinned to the allowlist by the RedisIoAdapter, and the shared session
+ * middleware attaches req.session to the handshake — so the connection is
+ * authenticated here and unauthenticated/cross-origin clients are rejected.
  */
-@WebSocketGateway({ namespace: '/rt', cors: { origin: true, credentials: true } })
-export class RealtimeGateway {
+@WebSocketGateway({ namespace: '/rt' })
+export class RealtimeGateway implements OnGatewayConnection {
   private readonly logger = new Logger(RealtimeGateway.name);
 
   @WebSocketServer()
   server!: Server;
+
+  handleConnection(client: Socket): void {
+    const request = client.request as unknown as { session?: { user?: SessionUser } };
+    const user = request.session?.user;
+    if (!user || !isFleetAdmin(user)) {
+      client.disconnect(true);
+      return;
+    }
+    (client.data as { user?: SessionUser }).user = user;
+  }
 
   @SubscribeMessage('import:subscribe')
   onSubscribe(
     @ConnectedSocket() socket: Socket,
     @MessageBody() body: { importId?: number },
   ): { subscribed: boolean } {
+    const user = (socket.data as { user?: SessionUser }).user;
+    if (!user) return { subscribed: false }; // unauthenticated (already disconnected)
+
     const importId = Number(body?.importId);
     if (!Number.isInteger(importId) || importId <= 0) return { subscribed: false };
     void socket.join(`import:${importId}`);

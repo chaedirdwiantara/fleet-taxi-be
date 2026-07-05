@@ -1,16 +1,11 @@
-import { BadRequestException, Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
 import { ApiCookieAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { CheckPolicies } from '../common/decorators/check-policies.decorator';
 import { PoliciesGuard } from '../common/guards/policies.guard';
 import { SessionGuard } from '../common/guards/session.guard';
-import { Platform } from '../import/import.types';
-import { UpsertGojekTargetDto, UpsertGrabTargetDto } from './dto/fleet.dto';
+import { parsePlatform } from '../import/import.types';
+import { UpsertTargetDto } from './dto/fleet.dto';
 import { TargetsService } from './targets.service';
-
-function parsePlatform(value: string): Platform {
-  if (value === 'gojek' || value === 'grab') return value;
-  throw new BadRequestException(`Unknown platform: ${value} (expected gojek|grab)`);
-}
 
 @ApiTags('admin-fleet-targets')
 @ApiCookieAuth('session')
@@ -34,11 +29,18 @@ export class TargetsController {
   upsert(
     @Param('platform') platformRaw: string,
     @Param('plate') plate: string,
-    @Body() dto: UpsertGojekTargetDto & UpsertGrabTargetDto,
+    @Body() dto: UpsertTargetDto,
   ) {
     const platform = parsePlatform(platformRaw);
     return platform === 'gojek'
-      ? this.targetsService.upsertGojek(plate, dto)
+      ? this.targetsService.upsertGojek(plate, {
+          fleetTarget: dto.fleetTarget,
+          rentalPartner: dto.rentalPartner,
+          deliveryBatch: dto.deliveryBatch,
+          serviceArea: dto.serviceArea,
+          vehicleType: dto.vehicleType,
+          regionId: dto.regionId,
+        })
       : this.targetsService.upsertGrab(plate, {
           rentalPartner: dto.rentalPartner,
           vehicleType: dto.vehicleType,

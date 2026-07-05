@@ -142,8 +142,9 @@ describe('partner portal + external API (M4 deliverable)', () => {
     expect(list.body.data[0].orderNumber).toBe(`${RUN}-ORD-A`);
 
     await agent.get(`/partner/portal/orders/${orderAId}`).expect(200);
-    const cross = await agent.get(`/partner/portal/orders/${orderBId}`).expect(403);
-    expect(cross.body.error.code).toBe('FORBIDDEN');
+    // another partner's order is indistinguishable from a missing one (no oracle)
+    const cross = await agent.get(`/partner/portal/orders/${orderBId}`).expect(404);
+    expect(cross.body.error.code).toBe('NOT_FOUND');
   });
 
   it('portal: exports own orders as xlsx and pdf', async () => {
@@ -232,8 +233,8 @@ describe('partner portal + external API (M4 deliverable)', () => {
     expect(numbers).toContain(`${RUN}-ORD-A`);
     expect(numbers).not.toContain(`${RUN}-ORD-B`);
 
-    const cross = await http.get(`/partner/v1/orders/${orderBId}`).set(auth).expect(403);
-    expect(cross.body.error.code).toBe('FORBIDDEN');
+    const cross = await http.get(`/partner/v1/orders/${orderBId}`).set(auth).expect(404);
+    expect(cross.body.error.code).toBe('NOT_FOUND');
   });
 
   it('enforces API-key scopes: read-only key cannot create orders or read pricelist', async () => {

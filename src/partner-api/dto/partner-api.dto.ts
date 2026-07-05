@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { IsInt, IsObject, IsOptional, IsString, Min, MinLength } from 'class-validator';
 
 export class CreatePartnerOrderDto {
   @ApiProperty({ example: 'BHISA_CAWANG', description: 'Pool code (whitelisted)' })
@@ -27,7 +27,10 @@ export class CreatePartnerOrderDto {
   @MinLength(10)
   pickupAt!: string;
 
-  @ApiPropertyOptional({ description: 'Free-form passenger details (stored as JSON)' })
+  @ApiPropertyOptional({
+    description: 'Free-form passenger details object (stored as JSON; size-bounded)',
+  })
   @IsOptional()
-  passengerDetails?: unknown;
+  @IsObject()
+  passengerDetails?: Record<string, unknown>;
 }

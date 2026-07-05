@@ -1,12 +1,10 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import RedisStore from 'connect-redis';
 import cookieParser from 'cookie-parser';
-import session from 'express-session';
+import helmet from 'helmet';
 import { corsOrigins, Env } from './config/env';
+import { buildSessionMiddleware } from './config/session';
 import { RedisService } from './db/redis.service';
-
-const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 /**
  * Shared app wiring used by main.ts, the OpenAPI export script, and e2e
@@ -17,25 +15,30 @@ export function configureApp(app: INestApplication): void {
   const redis = app.get(RedisService);
 
   const isProd = config.get('NODE_ENV', { infer: true }) === 'production';
-  const cookieDomain = config.get('COOKIE_DOMAIN', { infer: true });
+
+  // Behind Cloudflare + ALB in prod: trust the proxy so Secure cookies,
+  // req.secure and per-key rate-limit IPs resolve correctly.
+  if (isProd) {
+    (app.getHttpAdapter().getInstance() as { set: (k: string, v: unknown) => void }).set(
+      'trust proxy',
+      1,
+    );
+  }
+
+  // Security headers. CSP is disabled so Swagger UI's inline assets still load;
+  // the API surface is JSON, where CSP is not the relevant control.
+  app.use(helmet({ contentSecurityPolicy: false }));
 
   app.use(cookieParser());
   app.use(
-    session({
-      store: new RedisStore({ client: redis, prefix: 'sess:' }),
-      name: 'sid',
-      secret: config.get('SESSION_SECRET', { infer: true }),
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        httpOnly: true,
-        secure: isProd,
-        // cross-subdomain app. <-> api. needs SameSite=None in prod
-        sameSite: isProd ? 'none' : 'lax',
-        domain: cookieDomain === 'localhost' ? undefined : cookieDomain,
-        maxAge: SESSION_MAX_AGE_MS,
+    buildSessionMiddleware(
+      {
+        NODE_ENV: config.get('NODE_ENV', { infer: true }),
+        SESSION_SECRET: config.get('SESSION_SECRET', { infer: true }),
+        COOKIE_DOMAIN: config.get('COOKIE_DOMAIN', { infer: true }),
       },
-    }),
+      redis,
+    ),
   );
 
   app.useGlobalPipes(

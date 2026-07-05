@@ -3,21 +3,14 @@
   "paths": {
     "/health": {
       "get": {
-        "operationId": "HealthController_check",
+        "operationId": "HealthController_live",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HealthDto"
-                }
-              }
-            }
+            "description": ""
           }
         },
-        "summary": "Liveness check",
+        "summary": "Liveness probe",
         "tags": [
           "health"
         ]
@@ -574,6 +567,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertTargetDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -1043,7 +1046,7 @@
             "partner-api-key": []
           }
         ],
-        "summary": "One order's detail (own orders only — cross-partner returns 403)",
+        "summary": "One order's detail (own orders only — 404 for any other order)",
         "tags": [
           "partner-v1"
         ]
@@ -1073,10 +1076,6 @@
       }
     },
     "schemas": {
-      "HealthDto": {
-        "type": "object",
-        "properties": {}
-      },
       "LoginDto": {
         "type": "object",
         "properties": {
@@ -1121,6 +1120,37 @@
           "exceptionDate"
         ]
       },
+      "UpsertTargetDto": {
+        "type": "object",
+        "properties": {
+          "fleetTarget": {
+            "type": "number",
+            "description": "Daily target in integer rupiah (Gojek)"
+          },
+          "rentalPartner": {
+            "type": "string"
+          },
+          "deliveryBatch": {
+            "type": "string",
+            "description": "Gojek only"
+          },
+          "serviceArea": {
+            "type": "string",
+            "description": "Gojek only"
+          },
+          "vehicleType": {
+            "type": "string"
+          },
+          "regionId": {
+            "type": "number",
+            "description": "Gojek only"
+          },
+          "city": {
+            "type": "string",
+            "description": "Grab only"
+          }
+        }
+      },
       "CreatePartnerOrderDto": {
         "type": "object",
         "properties": {
@@ -1144,7 +1174,7 @@
           },
           "passengerDetails": {
             "type": "object",
-            "description": "Free-form passenger details (stored as JSON)"
+            "description": "Free-form passenger details object (stored as JSON; size-bounded)"
           }
         },
         "required": [

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, ilike, or, sql } from 'drizzle-orm';
 import { normalizePlate } from '../common/util/plate';
+import { byteCompare } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
 import { fleetExceptions, fleetImportDetails, fleetTargets } from '../db/schema';
 import {
@@ -285,9 +286,11 @@ export class GojekGridService {
       rows = rows.filter((r) => filters.plates!.includes(r.vehicle));
     }
 
+    // legacy strcmp order: rental_partner then driver_name (region_name
+    // tiebreaker is intentionally dropped — region resolution is out of R1 scope)
     rows.sort(
       (a, b) =>
-        a.rentalPartner.localeCompare(b.rentalPartner) || a.driverName.localeCompare(b.driverName),
+        byteCompare(a.rentalPartner, b.rentalPartner) || byteCompare(a.driverName, b.driverName),
     );
 
     // table totals over the fully filtered set (legacy table_* values)

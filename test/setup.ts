@@ -8,3 +8,4 @@ process.env.COOKIE_DOMAIN ??= 'localhost';
 process.env.CORS_ORIGINS ??= 'http://localhost:5173';
 process.env.API_KEY_PEPPER ??= 'test-pepper';
 process.env.SWAGGER_ENABLED ??= 'true';
+process.env.LOG_LEVEL ??= 'silent'; // keep test output clean
