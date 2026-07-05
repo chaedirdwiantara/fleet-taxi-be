@@ -1,0 +1,189 @@
+name: Deploy (backend)
+
+# Auto-deploy to ECS Fargate on push to the default branch.
+# Rollout order (guardrail): build+push image -> register task def ->
+# run DB migrations as a one-off task -> update service. Migrations run
+# BEFORE the service update because the app does NOT migrate on boot.
+on:
+  push:
+    branches: [main, master]
+
+# Never interrupt an in-flight deploy (a cancelled deploy could leave the
+# migration task and service update half-applied).
+concurrency:
+  group: deploy-backend-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Gate: the same checks as ci.yml. Deploy only runs if this passes. ──
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: fleet
+          POSTGRES_PASSWORD: fleet
+          POSTGRES_DB: fleet
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U fleet"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://fleet:fleet@localhost:5432/fleet
+      REDIS_URL: redis://localhost:6379
+      SESSION_SECRET: ci-session-secret
+      COOKIE_DOMAIN: localhost
+      CORS_ORIGINS: http://localhost:5173
+      API_KEY_PEPPER: ci-api-key-pepper
+      SWAGGER_ENABLED: 'true'
+      LOG_LEVEL: silent
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Build
+        run: pnpm build
+      - name: Apply migrations
+        run: pnpm db:migrate:prod
+      - name: Test
+        run: pnpm test
+      - name: OpenAPI schema builds
+        run: pnpm openapi:export
+
+  # ── Deploy: build image, migrate, roll the service. Gated on `test`. ──
+  deploy:
+    name: Deploy to ECS
+    needs: test
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write # required to request the OIDC token for AWS
+      contents: read
+
+    env:
+      AWS_REGION: ap-southeast-1
+      ECR_REPOSITORY: fleet-taxi-dashboard-api
+      ECS_CLUSTER: fleet-taxi-cluster
+      ECS_SERVICE: fleet-taxi-api-svc
+      TASK_FAMILY: fleet-taxi-api
+      CONTAINER_NAME: api
+      # One-off migration task network config — mirrors the live service.
+      SUBNETS: subnet-0edfed0f99fd77ff7,subnet-08b0e3549dcababb5,subnet-0713341b8b1562af7
+      SECURITY_GROUPS: sg-0da602be11dfcefb1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        id: build
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+          DOCKER_BUILDKIT: '1'
+        run: |
+          set -euo pipefail
+          IMAGE_URI="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          LATEST_URI="$REGISTRY/$ECR_REPOSITORY:latest"
+          docker build -t "$IMAGE_URI" -t "$LATEST_URI" .
+          docker push "$IMAGE_URI"
+          docker push "$LATEST_URI"
+          echo "image=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Register new task definition (swap in new image)
+        id: taskdef
+        env:
+          IMAGE_URI: ${{ steps.build.outputs.image }}
+        run: |
+          set -euo pipefail
+          # Base the new revision on the CURRENT one so env/secrets/roles are
+          # preserved — swap only the image, strip read-only fields.
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_FAMILY" \
+            --query taskDefinition > current-taskdef.json
+          jq --arg IMAGE "$IMAGE_URI" --arg NAME "$CONTAINER_NAME" '
+            .containerDefinitions |= map(if .name == $NAME then .image = $IMAGE else . end)
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                  .compatibilities, .registeredAt, .registeredBy)
+          ' current-taskdef.json > new-taskdef.json
+          NEW_TD_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://new-taskdef.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Registered: $NEW_TD_ARN"
+          echo "arn=$NEW_TD_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Run DB migrations (one-off task, BEFORE service update)
+        env:
+          NEW_TD_ARN: ${{ steps.taskdef.outputs.arn }}
+        run: |
+          set -euo pipefail
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --task-definition "$NEW_TD_ARN" \
+            --launch-type FARGATE \
+            --count 1 \
+            --started-by "gha-${{ github.run_id }}" \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SECURITY_GROUPS],assignPublicIp=ENABLED}" \
+            --overrides '{"containerOverrides":[{"name":"'"$CONTAINER_NAME"'","command":["node","dist/db/migrate.js"]}]}' \
+            --query 'tasks[0].taskArn' --output text)
+          if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
+            echo "::error::Failed to start migration task"; exit 1
+          fi
+          echo "Migration task: $TASK_ARN"
+          echo "Waiting for migration task to stop..."
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN"
+          EXIT_CODE=$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
+            --query "tasks[0].containers[?name=='$CONTAINER_NAME'].exitCode | [0]" --output text)
+          STOPPED_REASON=$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
+            --query 'tasks[0].stoppedReason' --output text)
+          echo "Migration container exitCode=$EXIT_CODE (stoppedReason: $STOPPED_REASON)"
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "::error::Migration task did not exit cleanly (exitCode=$EXIT_CODE, reason=$STOPPED_REASON). Aborting before service update."
+            exit 1
+          fi
+          echo "Migrations applied successfully."
+
+      - name: Update service to new revision
+        env:
+          NEW_TD_ARN: ${{ steps.taskdef.outputs.arn }}
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "$NEW_TD_ARN" > /dev/null
+          echo "Waiting for service to reach a stable state..."
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+          echo "Service is stable on $NEW_TD_ARN"
