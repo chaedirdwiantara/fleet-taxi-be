@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsISO8601, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsISO8601, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateExceptionDto {
   @ApiProperty({ example: 'B1234XY' })
@@ -69,4 +69,65 @@ export class UpsertTargetDto {
   @IsOptional()
   @IsString()
   city?: string;
+}
+
+/**
+ * Edit an import DETAIL row — the faithful port of the legacy
+ * AdminFleetMonitoringController::postEditDriver detail-update branch.
+ *
+ * Two modes (mutually exclusive):
+ *  • `detailId` set  → edit exactly that fleet_import_details row. This is how a
+ *    "Manual Payment tanpa plat" row is given a plate and/or toggled
+ *    Masuk/Tidak Masuk Setoran.
+ *  • `plate` + `month` + `year` → rename driver / re-plate EVERY detail of that
+ *    plated vehicle in the period.
+ * Target/grouping metadata is upserted separately via PUT targets/:plate.
+ */
+export class EditDriverDto {
+  @ApiPropertyOptional({ description: 'fleet_import_details.id (manual-row / single-detail edit)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  detailId?: number;
+
+  @ApiPropertyOptional({ description: 'Existing normalized plate (by-plate edit across a period)' })
+  @IsOptional()
+  @IsString()
+  plate?: string;
+
+  @ApiPropertyOptional({ description: 'Partition period month (1..12)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  month?: number;
+
+  @ApiPropertyOptional({ description: 'Partition period year' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  year?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  driverName?: string;
+
+  @ApiPropertyOptional({ description: 'New plate to assign (normalized server-side)' })
+  @IsOptional()
+  @IsString()
+  vehiclePlate?: string;
+
+  @ApiPropertyOptional({
+    description: '1 = Masuk Setoran, 0 = Tidak Masuk Setoran (manual payment only)',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsIn([0, 1])
+  isManualPaymentSetoran?: number;
+
+  @ApiPropertyOptional({ description: 'Reason shown when Tidak Masuk Setoran' })
+  @IsOptional()
+  @IsString()
+  manualPaymentNote?: string;
 }

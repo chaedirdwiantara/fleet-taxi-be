@@ -606,6 +606,83 @@
         ]
       }
     },
+    "/admin/fleet/gojek/details/{detailId}": {
+      "get": {
+        "operationId": "GojekController_detail",
+        "parameters": [
+          {
+            "name": "detailId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "month",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "One import detail row (prefill for the Edit form)",
+        "tags": [
+          "admin-fleet-gojek"
+        ]
+      }
+    },
+    "/admin/fleet/gojek/edit-driver": {
+      "post": {
+        "operationId": "GojekController_editDriver",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditDriverDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Edit driver/plate on an import detail (assign plate to a manual-payment row, toggle setoran)",
+        "tags": [
+          "admin-fleet-gojek"
+        ]
+      }
+    },
     "/admin/fleet/gojek/summary": {
       "get": {
         "operationId": "GojekController_summary",
@@ -1837,6 +1914,42 @@
             "type": "number",
             "example": 60,
             "description": "Requests per minute"
+          }
+        }
+      },
+      "EditDriverDto": {
+        "type": "object",
+        "properties": {
+          "detailId": {
+            "type": "number",
+            "description": "fleet_import_details.id (manual-row / single-detail edit)"
+          },
+          "plate": {
+            "type": "string",
+            "description": "Existing normalized plate (by-plate edit across a period)"
+          },
+          "month": {
+            "type": "number",
+            "description": "Partition period month (1..12)"
+          },
+          "year": {
+            "type": "number",
+            "description": "Partition period year"
+          },
+          "driverName": {
+            "type": "string"
+          },
+          "vehiclePlate": {
+            "type": "string",
+            "description": "New plate to assign (normalized server-side)"
+          },
+          "isManualPaymentSetoran": {
+            "type": "number",
+            "description": "1 = Masuk Setoran, 0 = Tidak Masuk Setoran (manual payment only)"
+          },
+          "manualPaymentNote": {
+            "type": "string",
+            "description": "Reason shown when Tidak Masuk Setoran"
           }
         }
       },
