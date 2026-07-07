@@ -1,8 +1,13 @@
-import { ConflictException, Injectable } from '@nestjs/common';
-import { count, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { and, count, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { hashPassword } from '../auth/password';
 import { DatabaseService } from '../db/database.service';
-import { partners, roles, userRoles, users } from '../db/schema';
+import { fleetImports, grabImports, partners, roles, userRoles, users } from '../db/schema';
 
 export interface UserWithRoles {
   id: number;
@@ -116,6 +121,107 @@ export class UsersService {
 
     const data = await this.listRowsByIds(ids.map((r) => r.id));
     return { data, total: total ?? 0 };
+  }
+
+  /**
+   * Partial account edit (super_admin user-management). Only provided fields
+   * change. Guards against locking everyone out by demoting/deactivating the
+   * last active super_admin.
+   */
+  async updateUser(
+    id: number,
+    patch: {
+      email?: string;
+      fullName?: string;
+      isActive?: boolean;
+      roles?: string[];
+      partnerId?: number;
+      password?: string;
+    },
+  ): Promise<AdminUserRow> {
+    const db = this.database.db;
+    const [target] = await db.select().from(users).where(eq(users.id, id));
+    if (!target) throw new NotFoundException('User not found');
+
+    const email = patch.email?.trim().toLowerCase();
+    if (email && email !== target.email) {
+      const [dupe] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+      if (dupe) throw new ConflictException('Email already in use');
+    }
+
+    // Last-super-admin guard: block a change that would remove the final one.
+    const dropsSuperAdmin =
+      (patch.roles !== undefined && !patch.roles.includes('super_admin')) ||
+      patch.isActive === false;
+    if (dropsSuperAdmin) {
+      const supers = await this.activeSuperAdminIds();
+      if (supers.length === 1 && supers[0] === id) {
+        throw new BadRequestException('Tidak bisa menonaktifkan/menurunkan super admin terakhir');
+      }
+    }
+
+    const userSet: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
+    if (email) userSet.email = email;
+    if (patch.fullName !== undefined) userSet.fullName = patch.fullName.trim();
+    if (patch.isActive !== undefined) userSet.isActive = patch.isActive;
+    if (patch.partnerId !== undefined) userSet.partnerId = patch.partnerId;
+    if (patch.password) {
+      userSet.passwordHash = await hashPassword(patch.password);
+      userSet.mustChangePassword = true; // admin-reset → force a change on next login
+    }
+
+    const roleIds = patch.roles ? await this.resolveRoleIds(patch.roles) : null;
+
+    await db.transaction(async (tx) => {
+      await tx.update(users).set(userSet).where(eq(users.id, id));
+      if (roleIds) {
+        await tx.delete(userRoles).where(eq(userRoles.userId, id));
+        await tx.insert(userRoles).values(roleIds.map((roleId) => ({ userId: id, roleId })));
+      }
+    });
+
+    const [row] = await this.listRowsByIds([id]);
+    return row!;
+  }
+
+  /**
+   * Hard-deletes an account. Refuses self-deletion and deleting the last active
+   * super_admin. Import history is preserved by nulling its `imported_by` (the
+   * FK has no cascade), then the user + its role rows (cascade) are removed.
+   */
+  async deleteUser(actingUserId: number, id: number): Promise<{ deleted: true }> {
+    if (actingUserId === id) {
+      throw new BadRequestException('Tidak bisa menghapus akun sendiri');
+    }
+    const db = this.database.db;
+    const [target] = await db.select({ id: users.id }).from(users).where(eq(users.id, id));
+    if (!target) throw new NotFoundException('User not found');
+
+    const supers = await this.activeSuperAdminIds();
+    if (supers.length === 1 && supers[0] === id) {
+      throw new BadRequestException('Tidak bisa menghapus super admin terakhir');
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(fleetImports)
+        .set({ importedBy: null })
+        .where(eq(fleetImports.importedBy, id));
+      await tx.update(grabImports).set({ importedBy: null }).where(eq(grabImports.importedBy, id));
+      await tx.delete(users).where(eq(users.id, id)); // user_roles cascade
+    });
+    return { deleted: true };
+  }
+
+  /** Ids of active users that hold the super_admin role. */
+  private async activeSuperAdminIds(): Promise<number[]> {
+    const rows = await this.database.db
+      .selectDistinct({ userId: userRoles.userId })
+      .from(userRoles)
+      .innerJoin(roles, eq(roles.id, userRoles.roleId))
+      .innerJoin(users, eq(users.id, userRoles.userId))
+      .where(and(eq(roles.name, 'super_admin'), eq(users.isActive, true)));
+    return rows.map((r) => r.userId);
   }
 
   /** Sets a new password hash and clears the must-change-password flag. */

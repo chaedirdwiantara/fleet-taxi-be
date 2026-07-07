@@ -71,6 +71,46 @@ export class PortalPlatesService {
     };
   }
 
+  async update(partnerId: number, id: number, dto: CreatePlateDto): Promise<PartnerPlate> {
+    const norm = normalizePlate(dto.plateNumber);
+    if (!norm) throw new BadRequestException('Nomor plat tidak valid');
+
+    const [existing] = await this.database.db
+      .select()
+      .from(partnerPlates)
+      .where(and(eq(partnerPlates.id, id), eq(partnerPlates.partnerId, partnerId)));
+    if (!existing) throw new NotFoundException('Plat tidak ditemukan');
+
+    // Re-plating to a norm this partner already registered on ANOTHER row collides.
+    if (norm !== existing.plateNumberNorm) {
+      const [dupe] = await this.database.db
+        .select({ id: partnerPlates.id })
+        .from(partnerPlates)
+        .where(
+          and(eq(partnerPlates.partnerId, partnerId), eq(partnerPlates.plateNumberNorm, norm)),
+        );
+      if (dupe) throw new ConflictException('Plat sudah terdaftar');
+    }
+
+    const [row] = await this.database.db
+      .update(partnerPlates)
+      .set({
+        plateNumber: dto.plateNumber.trim(),
+        plateNumberNorm: norm,
+        vehicleType: dto.vehicleType?.trim() || null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(partnerPlates.id, id), eq(partnerPlates.partnerId, partnerId)))
+      .returning();
+
+    return {
+      id: row!.id,
+      plateNumber: row!.plateNumber,
+      plateNumberNorm: row!.plateNumberNorm,
+      vehicleType: row!.vehicleType,
+    };
+  }
+
   async remove(partnerId: number, id: number): Promise<{ deleted: true }> {
     const [row] = await this.database.db
       .delete(partnerPlates)

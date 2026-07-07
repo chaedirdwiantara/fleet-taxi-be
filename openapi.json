@@ -97,6 +97,72 @@
         ]
       }
     },
+    "/admin/users/{id}": {
+      "patch": {
+        "operationId": "AdminUsersController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Edit an account (name/email/roles/partner/active/password)",
+        "tags": [
+          "admin-users"
+        ]
+      },
+      "delete": {
+        "operationId": "AdminUsersController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete an account (self / last super_admin blocked)",
+        "tags": [
+          "admin-users"
+        ]
+      }
+    },
     "/admin/auth/login": {
       "post": {
         "operationId": "AuthController_login",
@@ -1345,6 +1411,43 @@
       }
     },
     "/partner/portal/plates/{id}": {
+      "put": {
+        "operationId": "PortalPlatesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Edit one own registered plate (nomor + Type)",
+        "tags": [
+          "partner-portal"
+        ]
+      },
       "delete": {
         "operationId": "PortalPlatesController_remove",
         "parameters": [
@@ -1809,6 +1912,42 @@
           "password",
           "roles"
         ]
+      },
+      "UpdateUserDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "Enable/disable login"
+          },
+          "roles": {
+            "type": "array",
+            "description": "Admin/staff roles",
+            "items": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "finance",
+                "super_admin"
+              ]
+            }
+          },
+          "partnerId": {
+            "type": "number",
+            "description": "Move a partner-portal user to another partner org"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "description": "Reset password (forces change on next login)"
+          }
+        }
       },
       "LoginDto": {
         "type": "object",
