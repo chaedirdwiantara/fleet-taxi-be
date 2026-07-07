@@ -47,8 +47,12 @@ export class RealtimeGateway implements OnGatewayConnection {
   server!: Server;
 
   handleConnection(client: Socket): void {
-    const request = client.request as unknown as { session?: { user?: SessionUser } };
-    const user = request.session?.user;
+    const request = client.request as unknown as {
+      session?: { adminUser?: SessionUser; partnerUser?: SessionUser };
+    };
+    // Import progress is an admin surface; accept whichever human session the
+    // handshake carries and gate on the fleet-admin check below.
+    const user = request.session?.adminUser ?? request.session?.partnerUser;
     if (!user || !isFleetAdmin(user)) {
       client.disconnect(true);
       return;

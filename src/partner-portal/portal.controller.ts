@@ -17,6 +17,7 @@ import { ApiCookieAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import type { Request } from 'express';
 import { AuthService } from '../auth/auth.service';
 import { LoginDto } from '../auth/dto/login.dto';
+import { destroySession, regenerateSession, saveSession } from '../auth/session-ops';
 import { SessionUser } from '../auth/session.types';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SessionGuard } from '../common/guards/session.guard';
@@ -43,12 +44,12 @@ export class PortalController {
     if (!user.roles.includes('partner') || user.partnerId == null) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    await new Promise<void>((resolve, reject) =>
-      req.session.regenerate((err) =>
-        err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve(),
-      ),
-    );
-    req.session.user = user;
+    // Regenerate against fixation, but carry any coexisting admin session across
+    // so a partner login doesn't log the admin out.
+    const adminUser = req.session.adminUser;
+    await regenerateSession(req);
+    if (adminUser) req.session.adminUser = adminUser;
+    req.session.partnerUser = user;
     return user;
   }
 
@@ -57,11 +58,12 @@ export class PortalController {
   @UseGuards(SessionGuard)
   @ApiCookieAuth('session')
   async logout(@Req() req: Request): Promise<{ loggedOut: true }> {
-    await new Promise<void>((resolve, reject) =>
-      req.session.destroy((err) =>
-        err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve(),
-      ),
-    );
+    delete req.session.partnerUser;
+    if (req.session.adminUser) {
+      await saveSession(req);
+    } else {
+      await destroySession(req);
+    }
     return { loggedOut: true };
   }
 
