@@ -14,6 +14,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SessionGuard } from '../common/guards/session.guard';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { destroySession, regenerateSession, saveSession } from './session-ops';
 import { SessionUser } from './session.types';
 
 /** Guard-let: admin console endpoints require an admin (or super_admin) session. */
@@ -37,13 +38,12 @@ export class AuthController {
     if (!user.roles.includes('admin') && !user.roles.includes('super_admin')) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    // Regenerate to prevent session fixation, then persist the user
-    await new Promise<void>((resolve, reject) =>
-      req.session.regenerate((err) =>
-        err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve(),
-      ),
-    );
-    req.session.user = user;
+    // Regenerate to prevent session fixation, but carry any coexisting partner
+    // session across so an admin login doesn't log the partner out.
+    const partnerUser = req.session.partnerUser;
+    await regenerateSession(req);
+    if (partnerUser) req.session.partnerUser = partnerUser;
+    req.session.adminUser = user;
     return user;
   }
 
@@ -51,13 +51,15 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(SessionGuard)
   @ApiCookieAuth('session')
-  @ApiOperation({ summary: 'Destroy the session' })
+  @ApiOperation({ summary: 'Log out of the admin audience (keeps a partner session)' })
   async logout(@Req() req: Request): Promise<{ loggedOut: true }> {
-    await new Promise<void>((resolve, reject) =>
-      req.session.destroy((err) =>
-        err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve(),
-      ),
-    );
+    delete req.session.adminUser;
+    // Only tear the whole session down if no partner session remains.
+    if (req.session.partnerUser) {
+      await saveSession(req);
+    } else {
+      await destroySession(req);
+    }
     return { loggedOut: true };
   }
 

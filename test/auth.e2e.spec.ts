@@ -160,6 +160,28 @@ describe('auth (M1 deliverable)', () => {
     expect(crossed.body.error.code).toBe('UNAUTHENTICATED');
   });
 
+  it('keeps admin and partner sessions independent in one browser (no cross-logout)', async () => {
+    const agent = request.agent(app.getHttpServer());
+    // log into BOTH audiences on the same cookie
+    await agent
+      .post('/admin/auth/login')
+      .send({ email: ADMIN_EMAIL, password: PASSWORD })
+      .expect(200);
+    await agent
+      .post('/partner/portal/login')
+      .send({ email: PARTNER_EMAIL, password: PASSWORD })
+      .expect(200);
+
+    // the partner login must NOT have evicted the admin session (the reported bug)
+    await agent.get('/admin/auth/me').expect(200);
+    await agent.get('/partner/portal/me').expect(200);
+
+    // logging out of one audience leaves the other intact
+    await agent.post('/admin/auth/logout').expect(200);
+    await agent.get('/admin/auth/me').expect(401);
+    await agent.get('/partner/portal/me').expect(200);
+  });
+
   it('authenticates the external surface with a hashed API key', async () => {
     const res = await request(app.getHttpServer())
       .get('/test-partner-api/whoami')

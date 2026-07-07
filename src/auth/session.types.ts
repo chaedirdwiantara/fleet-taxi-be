@@ -8,9 +8,13 @@ export interface SessionUser {
   mustChangePassword: boolean;
 }
 
+// Admin and partner-portal are SEPARATE audiences that can be logged in at the
+// same time in one browser (they share the `sid` cookie). Keeping a slot per
+// audience means logging into one never clobbers the other's session.
 declare module 'express-session' {
   interface SessionData {
-    user?: SessionUser;
+    adminUser?: SessionUser;
+    partnerUser?: SessionUser;
   }
 }
 

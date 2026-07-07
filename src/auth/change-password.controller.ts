@@ -34,8 +34,10 @@ export class ChangePasswordController {
       dto.currentPassword,
       dto.newPassword,
     );
-    // Reflect the cleared flag in the live session so the FE gate lifts.
-    req.session.user = updated;
+    // Reflect the cleared flag in the live session so the FE gate lifts — in
+    // whichever audience slot holds this account (admin or partner).
+    if (req.session.adminUser?.id === updated.id) req.session.adminUser = updated;
+    if (req.session.partnerUser?.id === updated.id) req.session.partnerUser = updated;
     return updated;
   }
 }
