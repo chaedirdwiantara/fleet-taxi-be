@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   NotFoundException,
   Param,
   ParseIntPipe,
@@ -96,6 +97,7 @@ export class GojekController {
   }
 
   @Post('edit-driver')
+  @HttpCode(200)
   @CheckPolicies((a) => a.can('update', 'FleetImport'))
   @ApiOperation({
     summary:
