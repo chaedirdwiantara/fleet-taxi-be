@@ -388,4 +388,52 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
 
     await agent.delete(`/admin/fleet/gojek/exceptions/${id}`).expect(200);
   });
+
+  it('presents the unplated manual row with a blank plateRaw + detailId (HTTP)', async () => {
+    const res = await agent.get(`/admin/fleet/gojek/grid?month=${MONTH}&year=${YEAR}`).expect(200);
+    const manual = res.body.data.rows.find((r: { plateNorm: string }) =>
+      r.plateNorm.startsWith('manual_'),
+    );
+    expect(manual).toBeDefined();
+    expect(manual.plateRaw).toBe(''); // blank → FE shows a "Tanpa Plat" badge
+    expect(manual.detailId).toBeGreaterThan(0);
+    expect(manual.carId).toBeNull();
+  });
+
+  it('GET /details/:detailId prefills the manual-payment detail', async () => {
+    const grid = await gojek.buildGrid(MONTH, YEAR);
+    const manual = grid.rows.find((r) => r.key.startsWith('manual_'))!;
+    const res = await agent
+      .get(`/admin/fleet/gojek/details/${manual.detailId}?month=${MONTH}&year=${YEAR}`)
+      .expect(200);
+    expect(res.body.data.isManualPayment).toBe(true);
+    expect(res.body.data.driverName).toBe('NOPLAT');
+    expect(res.body.data.isManualPaymentSetoran).toBe(1);
+  });
+
+  // MUTATING — keep last: it consumes the synthetic manual row for this fixture.
+  it('POST /edit-driver assigns a plate to a manual row, merging it into that plate', async () => {
+    const before = await gojek.buildGrid(MONTH, YEAR);
+    const manual = before.rows.find((r) => r.key.startsWith('manual_'))!;
+
+    const res = await agent
+      .post('/admin/fleet/gojek/edit-driver')
+      .send({
+        detailId: manual.detailId,
+        month: MONTH,
+        year: YEAR,
+        driverName: 'NOPLAT',
+        vehiclePlate: 'B 8888 MP',
+        isManualPaymentSetoran: 1,
+      })
+      .expect(200);
+    expect(res.body.data.updated).toBe(1);
+
+    const after = await gojek.buildGrid(MONTH, YEAR);
+    // the synthetic manual_<id> row is gone; the detail now lives under its plate
+    expect(after.rows.find((r) => r.key.startsWith('manual_'))).toBeUndefined();
+    const merged = after.rows.find((r) => r.key === 'B8888MP');
+    expect(merged).toBeDefined();
+    expect(merged!.dailyData[8]).toBe(75000); // the manual amount, now on its plate
+  });
 });

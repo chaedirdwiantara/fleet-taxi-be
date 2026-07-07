@@ -15,9 +15,11 @@ import { buildOpenApiDocument } from '../src/openapi';
 const EXPECTED_OPERATIONS = [
   'DELETE /admin/fleet/gojek/exceptions/{id}',
   'DELETE /admin/fleet/{platform}/imports/{id}',
+  'DELETE /admin/users/{id}',
   'DELETE /partner/portal/plates/{id}',
   'GET /admin/auth/me',
   'GET /admin/fleet/gojek/cell',
+  'GET /admin/fleet/gojek/details/{detailId}',
   'GET /admin/fleet/gojek/exceptions',
   'GET /admin/fleet/gojek/grid',
   'GET /admin/fleet/gojek/performers',
@@ -45,8 +47,10 @@ const EXPECTED_OPERATIONS = [
   'GET /partner/v1/orders',
   'GET /partner/v1/orders/{id}',
   'GET /partner/v1/pricelist',
+  'PATCH /admin/users/{id}',
   'POST /admin/auth/login',
   'POST /admin/auth/logout',
+  'POST /admin/fleet/gojek/edit-driver',
   'POST /admin/fleet/gojek/exceptions',
   'POST /admin/fleet/{platform}/imports',
   'POST /admin/partners',
@@ -59,6 +63,7 @@ const EXPECTED_OPERATIONS = [
   'POST /partner/portal/plates',
   'POST /partner/v1/orders',
   'PUT /admin/fleet/{platform}/targets/{plate}',
+  'PUT /partner/portal/plates/{id}',
 ];
 
 function operations(doc: OpenAPIObject): string[] {

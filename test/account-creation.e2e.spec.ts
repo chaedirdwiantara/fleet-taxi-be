@@ -214,6 +214,41 @@ describe('account creation (super_admin only)', () => {
     expect(res.body.data.every((u: { partner: unknown }) => u.partner === null)).toBe(true);
   });
 
+  it('super_admin edits an account (name/role/active), plain admin is forbidden', async () => {
+    const created = await superAgent
+      .post('/admin/users')
+      .send({
+        email: `${RUN}-editme@test.example`,
+        fullName: 'Edit Me',
+        password: 'initial-password',
+        roles: ['admin'],
+      })
+      .expect(201);
+    const id = created.body.data.id as number;
+
+    const updated = await superAgent
+      .patch(`/admin/users/${id}`)
+      .send({ fullName: 'Edited Name', roles: ['finance'], isActive: false })
+      .expect(200);
+    expect(updated.body.data.fullName).toBe('Edited Name');
+    expect(updated.body.data.roles).toEqual(['finance']);
+    expect(updated.body.data.isActive).toBe(false);
+
+    // plain admin (no manage-User) cannot edit or delete
+    await adminAgent.patch(`/admin/users/${id}`).send({ fullName: 'x' }).expect(403);
+    await adminAgent.delete(`/admin/users/${id}`).expect(403);
+
+    // super_admin deletes it → gone from the list
+    await superAgent.delete(`/admin/users/${id}`).expect(200);
+    const list = await superAgent.get('/admin/users?type=admin').expect(200);
+    expect(list.body.data.some((u: { id: number }) => u.id === id)).toBe(false);
+  });
+
+  it('refuses self-deletion', async () => {
+    const me = await superAgent.get('/admin/auth/me').expect(200);
+    await superAgent.delete(`/admin/users/${me.body.data.id}`).expect(400);
+  });
+
   // ---- first-login change-password --------------------------------------
 
   it('forces first-login change-password: verifies current, clears the flag, and rotates the password', async () => {

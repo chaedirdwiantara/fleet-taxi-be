@@ -1,10 +1,10 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { DatabaseService } from '../db/database.service';
-import { fleetImports, grabImports } from '../db/schema';
+import { fleetImports, grabImports, users } from '../db/schema';
 import { StorageService } from '../storage/storage.service';
 import { detectKind } from './file-reader';
 import { IMPORT_QUEUE, ParseJobData, Platform, RollbackJobData } from './import.types';
@@ -48,6 +48,7 @@ export class ImportService {
       status,
       error: null as string | null,
       importedBy: row.importedBy == null ? null : Number(row.importedBy),
+      uploaderName: null as string | null, // resolved in list() (batch name lookup)
       createdAt: row.createdAt as Date,
       updatedAt: row.updatedAt as Date,
     };
@@ -105,7 +106,23 @@ export class ImportService {
       .from(table)
       .orderBy(desc(table.createdAt))
       .limit(200);
-    return rows.map((r) => this.toBatch(platform, r as Record<string, unknown>));
+    const batches = rows.map((r) => this.toBatch(platform, r as Record<string, unknown>));
+
+    // Resolve "Diunggah Oleh" names in one lookup (legacy joined cms_users).
+    const uploaderIds = [
+      ...new Set(batches.map((b) => b.importedBy).filter((id): id is number => id != null)),
+    ];
+    if (uploaderIds.length > 0) {
+      const people = await this.database.db
+        .select({ id: users.id, fullName: users.fullName, email: users.email })
+        .from(users)
+        .where(inArray(users.id, uploaderIds));
+      const nameById = new Map(people.map((p) => [p.id, p.fullName ?? p.email]));
+      for (const b of batches) {
+        b.uploaderName = b.importedBy == null ? null : (nameById.get(b.importedBy) ?? null);
+      }
+    }
+    return batches;
   }
 
   async getById(platform: Platform, id: number) {

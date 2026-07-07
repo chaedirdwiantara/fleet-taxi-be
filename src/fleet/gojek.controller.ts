@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   NotFoundException,
   Param,
   ParseIntPipe,
@@ -16,7 +17,8 @@ import { CheckPolicies } from '../common/decorators/check-policies.decorator';
 import { PoliciesGuard } from '../common/guards/policies.guard';
 import { SessionGuard } from '../common/guards/session.guard';
 import { parsePeriod, toStringArray } from '../common/util/period';
-import { CreateExceptionDto } from './dto/fleet.dto';
+import { DetailsService } from './details.service';
+import { CreateExceptionDto, EditDriverDto } from './dto/fleet.dto';
 import { ExceptionsService } from './exceptions.service';
 import { toCellBreakdown, toFleetGrid, toGojekSummary, toPerformers } from './fleet-presenter';
 import { GojekGridService } from './gojek-grid.service';
@@ -29,6 +31,7 @@ export class GojekController {
   constructor(
     private readonly gridService: GojekGridService,
     private readonly exceptionsService: ExceptionsService,
+    private readonly detailsService: DetailsService,
   ) {}
 
   @Get('grid')
@@ -74,6 +77,43 @@ export class GojekController {
     const bucket = await this.gridService.getCell(period.month, period.year, plate, day);
     if (!bucket) throw new NotFoundException('No transactions for that vehicle/day');
     return toCellBreakdown(bucket, plate, day);
+  }
+
+  @Get('details/:detailId')
+  @CheckPolicies((a) => a.can('read', 'FleetImport'))
+  @ApiOperation({ summary: 'One import detail row (prefill for the Edit form)' })
+  @ApiQuery({ name: 'month', required: false, example: 7 })
+  @ApiQuery({ name: 'year', required: false, example: 2026 })
+  detail(
+    @Param('detailId', ParseIntPipe) detailId: number,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
+  ) {
+    return this.detailsService.getDetail(
+      detailId,
+      month ? Number(month) : undefined,
+      year ? Number(year) : undefined,
+    );
+  }
+
+  @Post('edit-driver')
+  @HttpCode(200)
+  @CheckPolicies((a) => a.can('update', 'FleetImport'))
+  @ApiOperation({
+    summary:
+      'Edit driver/plate on an import detail (assign plate to a manual-payment row, toggle setoran)',
+  })
+  editDriver(@Body() dto: EditDriverDto) {
+    return this.detailsService.editDriver({
+      detailId: dto.detailId,
+      plate: dto.plate,
+      month: dto.month,
+      year: dto.year,
+      driverName: dto.driverName,
+      vehiclePlate: dto.vehiclePlate,
+      isManualPaymentSetoran: dto.isManualPaymentSetoran,
+      manualPaymentNote: dto.manualPaymentNote,
+    });
   }
 
   @Get('summary')

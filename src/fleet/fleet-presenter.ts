@@ -52,6 +52,10 @@ export interface FleetRowDto {
   vehicleType: string;
   deliveryBatch: string;
   carId: number | null;
+  // Set only for synthetic "Manual Payment tanpa plat" rows (pivot key
+  // manual_<detailId>). It is the fleet_import_details.id of that single record,
+  // so the Aksi → Edit form can reassign a plate / toggle Masuk Setoran on it.
+  detailId: number | null;
   dailyTarget: number;
   days: Record<number, DayCellValueDto>;
   summary: { totalDeduction: number; calculatedTarget: number; gap: number; outstanding: number };
@@ -171,13 +175,17 @@ function toFleetRow(row: GojekVehicleRow): FleetRowDto {
 
   return {
     plateNorm: row.key,
-    plateRaw: row.vehicle || row.key,
+    // A real plate renders as-is; a "Manual Payment tanpa plat" synthetic row
+    // (vehicle === '') stays blank so the grid shows a "Tanpa Plat" badge rather
+    // than leaking the internal manual_<id> key.
+    plateRaw: row.vehicle,
     driverName: row.driverName,
     rentalPartner: row.rentalPartner,
     regionName: '', // region name resolution is out of R1 scope (only regionId is stored)
     vehicleType: row.vehicleType,
     deliveryBatch: row.deliveryBatch,
     carId: row.targetId,
+    detailId: row.detailId,
     dailyTarget: row.dailyTarget,
     days,
     summary: {

@@ -31,10 +31,32 @@ export class PortalFleetService {
     private readonly grab: GrabGridService,
   ) {}
 
+  /** norm → Type map from the partner's registered plates (Daftarkan Plat). */
+  private async registeredTypes(partnerId: number): Promise<Map<string, string>> {
+    const registered = await this.plates.list(partnerId);
+    const map = new Map<string, string>();
+    for (const p of registered) {
+      if (p.vehicleType) map.set(p.plateNumberNorm, p.vehicleType);
+    }
+    return map;
+  }
+
   async gojekGrid(partnerId: number, month: number, year: number): Promise<FleetGridDto> {
-    const scopePlates = await this.plates.registeredNorms(partnerId);
+    const [scopePlates, typeMap] = await Promise.all([
+      this.plates.registeredNorms(partnerId),
+      this.registeredTypes(partnerId),
+    ]);
     const result = await this.gojek.buildGrid(month, year, { scopePlates });
-    return toFleetGrid(result);
+    const dto = toFleetGrid(result);
+    // Surface the Type the partner entered in Daftarkan Plat when the grid has
+    // none (no admin fleet target set it) — matches the registration screen.
+    for (const row of dto.rows) {
+      if (!row.vehicleType) {
+        const type = typeMap.get(row.plateNorm);
+        if (type) row.vehicleType = type;
+      }
+    }
+    return dto;
   }
 
   async gojekCell(
@@ -61,9 +83,19 @@ export class PortalFleetService {
   }
 
   async grabGrid(partnerId: number, month: number, year: number): Promise<GrabGridDto> {
-    const scopePlates = await this.plates.registeredNorms(partnerId);
+    const [scopePlates, typeMap] = await Promise.all([
+      this.plates.registeredNorms(partnerId),
+      this.registeredTypes(partnerId),
+    ]);
     const result = await this.grab.buildGrid(month, year, { scopePlates });
-    return toGrabGrid(result);
+    const dto = toGrabGrid(result);
+    for (const row of dto.rows) {
+      if (!row.vehicleType || row.vehicleType === '-') {
+        const type = typeMap.get(row.plateNumber);
+        if (type) row.vehicleType = type;
+      }
+    }
+    return dto;
   }
 
   async grabCell(

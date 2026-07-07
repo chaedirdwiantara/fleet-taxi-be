@@ -6,6 +6,7 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -33,6 +34,16 @@ export class PortalPlatesController {
   @ApiOperation({ summary: 'Register a plate (nomor + Type) for the partner' })
   create(@CurrentUser() user: SessionUser, @Body() dto: CreatePlateDto) {
     return this.plates.create(requirePartner(user), dto);
+  }
+
+  @Put(':id')
+  @ApiOperation({ summary: 'Edit one own registered plate (nomor + Type)' })
+  update(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreatePlateDto,
+  ) {
+    return this.plates.update(requirePartner(user), id, dto);
   }
 
   @Delete(':id')

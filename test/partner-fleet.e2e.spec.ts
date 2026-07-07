@@ -225,6 +225,9 @@ describe('partner portal fleet monitoring (Daftarkan Plat + scoped grids)', () =
     const mine = grid.body.data.rows.find((r: { plateNorm: string }) => r.plateNorm === MINE_NORM);
     expect(mine.summary.totalDeduction).toBe(600000);
     expect(mine.days['5'].countedAmount).toBe(300000);
+    // the Type registered in Daftarkan Plat surfaces on the grid (no admin
+    // fleet target set it) — the PortalFleetService overlay.
+    expect(mine.vehicleType).toBe('Premium - BYD M6');
 
     const summary = await a
       .get(`/partner/portal/fleet/gojek/summary?month=${MONTH}&year=${YEAR}`)
@@ -232,6 +235,30 @@ describe('partner portal fleet monitoring (Daftarkan Plat + scoped grids)', () =
     expect(summary.body.data.globalSummary.totalDeduction).toBe(600000);
     expect(summary.body.data.driverActivity).toBeDefined();
     expect(summary.body.data.charts.daily).toHaveLength(30);
+  });
+
+  it('edits a registered plate Type (PUT) and the grid overlay follows', async () => {
+    const a = await login();
+    const id = (await a.get('/partner/portal/plates').expect(200)).body.data[0].id;
+
+    const updated = await a
+      .put(`/partner/portal/plates/${id}`)
+      .send({ plateNumber: 'B 1111 AA', vehicleType: 'Reguler - Xenia' })
+      .expect(200);
+    expect(updated.body.data.plateNumberNorm).toBe(MINE_NORM);
+    expect(updated.body.data.vehicleType).toBe('Reguler - Xenia');
+
+    const grid = await a
+      .get(`/partner/portal/fleet/gojek/grid?month=${MONTH}&year=${YEAR}`)
+      .expect(200);
+    const mine = grid.body.data.rows.find((r: { plateNorm: string }) => r.plateNorm === MINE_NORM);
+    expect(mine.vehicleType).toBe('Reguler - Xenia');
+
+    // restore for the later delete test's expectations
+    await a
+      .put(`/partner/portal/plates/${id}`)
+      .send({ plateNumber: 'B 1111 AA', vehicleType: 'Premium - BYD M6' })
+      .expect(200);
   });
 
   it('scopes the Grab grid and blocks cell access to unregistered plates', async () => {
