@@ -16,6 +16,7 @@ const EXPECTED_OPERATIONS = [
   'DELETE /admin/fleet/gojek/exceptions/{id}',
   'DELETE /admin/fleet/{platform}/imports/{id}',
   'DELETE /admin/users/{id}',
+  'DELETE /partner/portal/checkpoints/{id}',
   'DELETE /partner/portal/checkpoints/{id}/media/{mediaId}',
   'DELETE /partner/portal/plates/{id}',
   'GET /admin/auth/me',

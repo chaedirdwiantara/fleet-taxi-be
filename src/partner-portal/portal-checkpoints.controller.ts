@@ -136,6 +136,14 @@ export class PortalCheckpointsController {
     return this.checkpoints.deleteMedia(requirePartner(user), id, mediaId);
   }
 
+  @Delete(':id')
+  @ApiOperation({
+    summary: 'Delete a DRAFT checkpoint (completed berita acara are immutable — 409)',
+  })
+  remove(@CurrentUser() user: SessionUser, @Param('id', ParseIntPipe) id: number) {
+    return this.checkpoints.remove(requirePartner(user), id);
+  }
+
   @Post(':id/complete')
   @ApiOperation({ summary: 'Complete the checkpoint (validates points, photos, signatures)' })
   complete(

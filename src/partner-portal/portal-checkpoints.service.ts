@@ -381,6 +381,25 @@ export class PortalCheckpointsService {
     return { deleted: true };
   }
 
+  /**
+   * Deletes a DRAFT checkpoint (mis-created ones). Completed checkpoints are
+   * berita acara — legal handover evidence — and stay immutable/undeletable.
+   * Points and media rows go via FK cascade; stored files are cleaned up
+   * best-effort (a no-op on S3, where lifecycle rules own object expiry).
+   */
+  async remove(partnerId: number, id: number): Promise<{ deleted: true }> {
+    await this.ownedDraft(partnerId, id);
+    const media = await this.database.db
+      .select({ storageKey: checkpointMedia.storageKey })
+      .from(checkpointMedia)
+      .where(eq(checkpointMedia.checkpointId, id));
+    await this.database.db
+      .delete(checkpoints)
+      .where(and(eq(checkpoints.id, id), eq(checkpoints.partnerId, partnerId)));
+    await Promise.all(media.map((m) => this.storage.delete(m.storageKey)));
+    return { deleted: true };
+  }
+
   async complete(
     partnerId: number,
     id: number,

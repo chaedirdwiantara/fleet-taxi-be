@@ -283,4 +283,28 @@ describe('partner checkpoints (handover inspection)', () => {
     const none = await agentB.get('/partner/portal/checkpoints').expect(200);
     expect(none.body.meta.total).toBe(0);
   });
+
+  it('deletes a draft (with its media) but never a completed checkpoint', async () => {
+    const created = await agentA
+      .post('/partner/portal/checkpoints')
+      .send({ plateNumber: PLATE, handoverType: 'delivery_to_driver' })
+      .expect(201);
+    const draftId = created.body.data.id as number;
+    const mediaId = await uploadMedia(
+      agentA,
+      draftId,
+      { kind: 'photo', pointKey: 'exterior_front', contentType: 'image/jpeg' },
+      JPG,
+    );
+
+    // Another partner can't delete it; the owner can
+    await agentB.delete(`/partner/portal/checkpoints/${draftId}`).expect(404);
+    await agentA.delete(`/partner/portal/checkpoints/${draftId}`).expect(200);
+    await agentA.get(`/partner/portal/checkpoints/${draftId}`).expect(404);
+    // Cascade removed the media row, so its file endpoint 404s too
+    await agentA.get(`/partner/portal/checkpoints/media/${mediaId}/file`).expect(404);
+
+    // A completed checkpoint is a berita acara — immutable, undeletable
+    await agentA.delete(`/partner/portal/checkpoints/${deliveryId}`).expect(409);
+  });
 });
