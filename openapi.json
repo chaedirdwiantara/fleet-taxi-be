@@ -2254,6 +2254,371 @@
         ]
       }
     },
+    "/partner/portal/rentals/cogs-defaults": {
+      "get": {
+        "operationId": "PartnerRentalsController_listCogsDefaults",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Per-partner default COGS/day per vehicle type (lazy-seeded)",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "put": {
+        "operationId": "PartnerRentalsController_upsertCogsDefault",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCogsDefaultDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Upsert one COGS default (key present → update, absent → create)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals/export": {
+      "get": {
+        "operationId": "PartnerRentalsController_export",
+        "parameters": [
+          {
+            "name": "format",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "xlsx",
+                "pdf"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "month",
+            "required": false,
+            "in": "query",
+            "description": "1..12, default current WIB month",
+            "schema": {
+              "example": 7,
+              "type": "number"
+            }
+          },
+          {
+            "name": "year",
+            "required": false,
+            "in": "query",
+            "description": "Default current WIB year",
+            "schema": {
+              "example": 2026,
+              "type": "number"
+            }
+          },
+          {
+            "name": "region",
+            "required": false,
+            "in": "query",
+            "description": "Exact region; absent/empty = all",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Substring on plate/customer/service area",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "date",
+                "duration",
+                "status",
+                "omset",
+                "cogs"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Export the monthly rental recap (?format=pdf|xlsx)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals": {
+      "get": {
+        "operationId": "PartnerRentalsController_list",
+        "parameters": [
+          {
+            "name": "month",
+            "required": false,
+            "in": "query",
+            "description": "1..12, default current WIB month",
+            "schema": {
+              "example": 7,
+              "type": "number"
+            }
+          },
+          {
+            "name": "year",
+            "required": false,
+            "in": "query",
+            "description": "Default current WIB year",
+            "schema": {
+              "example": 2026,
+              "type": "number"
+            }
+          },
+          {
+            "name": "region",
+            "required": false,
+            "in": "query",
+            "description": "Exact region; absent/empty = all",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Substring on plate/customer/service area",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "date",
+                "duration",
+                "status",
+                "omset",
+                "cogs"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Monthly rental recap: summary, nett per type, regions, items",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "post": {
+        "operationId": "PartnerRentalsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRentalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create a rental transaction (overlap-guarded per plate)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals/{id}": {
+      "put": {
+        "operationId": "PartnerRentalsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRentalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Edit one own rental transaction",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "delete": {
+        "operationId": "PartnerRentalsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete one own rental transaction",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals/{id}/payment-status": {
+      "patch": {
+        "operationId": "PartnerRentalsController_updatePaymentStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePaymentStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Toggle Belum/Sudah Dibayar on one own rental",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
     "/partner/v1/pricelist": {
       "get": {
         "operationId": "PricelistController_quote",
@@ -2850,6 +3215,145 @@
         "required": [
           "odometerKm",
           "batteryPercent"
+        ]
+      },
+      "UpsertCogsDefaultDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "air_ev",
+            "description": "Present → update that row; absent → create (key slugified from label)"
+          },
+          "label": {
+            "type": "string",
+            "example": "Air EV"
+          },
+          "cogsPerDay": {
+            "type": "number",
+            "example": 335833,
+            "description": "Integer rupiah"
+          }
+        },
+        "required": [
+          "label",
+          "cogsPerDay"
+        ]
+      },
+      "CreateRentalDto": {
+        "type": "object",
+        "properties": {
+          "plateNumber": {
+            "type": "string",
+            "example": "B 1793 SCP",
+            "description": "Nomor plat (as entered)"
+          },
+          "vehicleType": {
+            "type": "string",
+            "example": "Air EV"
+          },
+          "region": {
+            "type": "string",
+            "example": "Jakarta"
+          },
+          "startDate": {
+            "type": "string",
+            "example": "2026-07-01",
+            "description": "YYYY-MM-DD, inclusive"
+          },
+          "endDate": {
+            "type": "string",
+            "example": "2026-07-27",
+            "description": "YYYY-MM-DD, inclusive"
+          },
+          "price": {
+            "type": "number",
+            "example": 450000,
+            "description": "Integer rupiah, per priceUnit"
+          },
+          "priceUnit": {
+            "type": "string",
+            "enum": [
+              "hari",
+              "bulan"
+            ],
+            "description": "Default 'hari'"
+          },
+          "cogsPerDay": {
+            "type": "number",
+            "example": 335833,
+            "description": "COGS per day, integer rupiah"
+          },
+          "cogsType": {
+            "type": "string",
+            "example": "Air EV"
+          },
+          "additionalCost": {
+            "type": "number",
+            "description": "TOTAL for the transaction (not per day), integer rupiah. Default 0."
+          },
+          "additionalCostDescription": {
+            "type": "string",
+            "example": "Antar-jemput bandara"
+          },
+          "deposit": {
+            "type": "number",
+            "description": "Integer rupiah. Default 0."
+          },
+          "rentalType": {
+            "type": "string",
+            "enum": [
+              "Dengan Driver",
+              "Lepas Kunci"
+            ]
+          },
+          "infoSource": {
+            "type": "string",
+            "example": "Instagram"
+          },
+          "serviceArea": {
+            "type": "string",
+            "example": "Jabodetabek"
+          },
+          "customerName": {
+            "type": "string",
+            "example": "Budi Santoso"
+          },
+          "customerPhone": {
+            "type": "string",
+            "example": "+62 812-3456-7890"
+          },
+          "paymentStatus": {
+            "type": "string",
+            "enum": [
+              "Belum Dibayar",
+              "Sudah Dibayar"
+            ],
+            "description": "Default 'Belum Dibayar'"
+          }
+        },
+        "required": [
+          "plateNumber",
+          "startDate",
+          "endDate",
+          "price",
+          "cogsPerDay"
+        ]
+      },
+      "UpdatePaymentStatusDto": {
+        "type": "object",
+        "properties": {
+          "paymentStatus": {
+            "type": "string",
+            "enum": [
+              "Belum Dibayar",
+              "Sudah Dibayar"
+            ],
+            "example": "Sudah Dibayar"
+          }
+        },
+        "required": [
+          "paymentStatus"
         ]
       },
       "CreatePartnerOrderDto": {
