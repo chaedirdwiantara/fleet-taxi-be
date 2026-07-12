@@ -1898,6 +1898,33 @@
         "tags": [
           "partner-portal"
         ]
+      },
+      "delete": {
+        "operationId": "PortalCheckpointsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete a DRAFT checkpoint (completed berita acara are immutable — 409)",
+        "tags": [
+          "partner-portal"
+        ]
       }
     },
     "/partner/portal/checkpoints/{id}/points/{pointKey}": {
