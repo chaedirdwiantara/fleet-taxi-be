@@ -4,11 +4,14 @@ import { FleetModule } from '../fleet/fleet.module';
 import { GrabModule } from '../grab/grab.module';
 import { StorageModule } from '../storage/storage.module';
 import { CheckpointPdfService } from './checkpoint-pdf.service';
+import { DebtExportService } from './debt-export.service';
 import { PortalExportService } from './export.service';
 import { PortalController } from './portal.controller';
 import { PortalCheckpointMediaController } from './portal-checkpoint-media.controller';
 import { PortalCheckpointsController } from './portal-checkpoints.controller';
 import { PortalCheckpointsService } from './portal-checkpoints.service';
+import { PortalDebtController } from './portal-debt.controller';
+import { PortalDebtService } from './portal-debt.service';
 import { PortalFleetController } from './portal-fleet.controller';
 import { PortalFleetService } from './portal-fleet.service';
 import { PortalOrdersService } from './portal-orders.service';
@@ -23,6 +26,7 @@ import { PortalPlatesService } from './portal-plates.service';
     PortalFleetController,
     PortalCheckpointsController,
     PortalCheckpointMediaController,
+    PortalDebtController,
   ],
   providers: [
     PortalOrdersService,
@@ -31,6 +35,8 @@ import { PortalPlatesService } from './portal-plates.service';
     PortalFleetService,
     PortalCheckpointsService,
     CheckpointPdfService,
+    PortalDebtService,
+    DebtExportService,
   ],
 })
 export class PartnerPortalModule {}
