@@ -1,7 +1,13 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { Env } from '../config/env';
@@ -65,5 +71,58 @@ export class StorageService {
   async delete(key: string): Promise<void> {
     if (this.useS3) return; // keep originals in S3; lifecycle rules handle expiry
     await unlink(this.localPath(key)).catch(() => undefined);
+  }
+
+  /** Whether media flows go direct-to-S3 (prod) or through the API's local sink (dev). */
+  isS3(): boolean {
+    return this.useS3;
+  }
+
+  /**
+   * Presigned PUT for direct client→S3 upload. ContentType and ContentLength
+   * are part of the signature, so S3 rejects a PUT with different values —
+   * this is the server-side size/type enforcement.
+   */
+  async presignPut(
+    key: string,
+    contentType: string,
+    contentLength: number,
+    ttlSec = 300,
+  ): Promise<string> {
+    return getSignedUrl(
+      this.s3!,
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ContentType: contentType,
+        ContentLength: contentLength,
+      }),
+      { expiresIn: ttlSec },
+    );
+  }
+
+  /** Presigned GET for viewing media; regenerated on every detail fetch. */
+  async presignGet(key: string, ttlSec = 600): Promise<string> {
+    return getSignedUrl(this.s3!, new GetObjectCommand({ Bucket: this.bucket, Key: key }), {
+      expiresIn: ttlSec,
+    });
+  }
+
+  /** Object metadata, or null when it doesn't exist (used by upload confirm). */
+  async head(key: string): Promise<{ size: number } | null> {
+    if (this.useS3) {
+      try {
+        const res = await this.s3!.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+        return { size: res.ContentLength ?? 0 };
+      } catch {
+        return null;
+      }
+    }
+    try {
+      const s = await stat(this.localPath(key));
+      return { size: s.size };
+    } catch {
+      return null;
+    }
   }
 }

@@ -202,7 +202,7 @@
             "session": []
           }
         ],
-        "summary": "Destroy the session",
+        "summary": "Log out of the admin audience (keeps a partner session)",
         "tags": [
           "admin-auth"
         ]
@@ -1715,6 +1715,518 @@
         ]
       }
     },
+    "/partner/portal/checkpoints": {
+      "get": {
+        "operationId": "PortalCheckpointsController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 50,
+              "type": "string"
+            }
+          },
+          {
+            "name": "plate",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "handoverType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "delivery_to_customer",
+                "return_from_customer",
+                "delivery_to_driver",
+                "return_from_driver"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "draft",
+                "completed"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "month",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List own handover checkpoints (paginated, filterable)",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "post": {
+        "operationId": "PortalCheckpointsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCheckpointDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create a draft checkpoint (plate must be registered)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}": {
+      "get": {
+        "operationId": "PortalCheckpointsController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "One own checkpoint: header, points, media, signatures",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "patch": {
+        "operationId": "PortalCheckpointsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCheckpointDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Update draft checkpoint header fields",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/points/{pointKey}": {
+      "patch": {
+        "operationId": "PortalCheckpointsController_updatePoint",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "pointKey",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "exterior_front",
+                "exterior_rear",
+                "exterior_left",
+                "exterior_right",
+                "interior_front",
+                "interior_rear",
+                "dashboard_odometer",
+                "tires_wheels",
+                "charging_port",
+                "keys_documents"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCheckpointPointDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Update one inspection point (passed / note)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/media/presign": {
+      "post": {
+        "operationId": "PortalCheckpointsController_presign",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignCheckpointMediaDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create a pending media row and get an upload URL (S3 presigned PUT in prod)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/media/{mediaId}/confirm": {
+      "post": {
+        "operationId": "PortalCheckpointsController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "mediaId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Confirm an upload finished (marks media uploaded)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/media/{mediaId}": {
+      "delete": {
+        "operationId": "PortalCheckpointsController_deleteMedia",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "mediaId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete one media item from a draft checkpoint",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/complete": {
+      "post": {
+        "operationId": "PortalCheckpointsController_complete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteCheckpointDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Complete the checkpoint (validates points, photos, signatures)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/comparison": {
+      "get": {
+        "operationId": "PortalCheckpointsController_comparison",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Latest completed paired delivery checkpoint for comparison (null when n/a)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/pdf": {
+      "get": {
+        "operationId": "PortalCheckpointsController_exportPdf",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Berita acara serah terima as PDF (completed checkpoints only)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/media/{mediaId}/upload": {
+      "put": {
+        "operationId": "PortalCheckpointMediaController_upload",
+        "parameters": [
+          {
+            "name": "mediaId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Upload sink for presigned media (dev; prod presigns S3 directly)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/media/{mediaId}/file": {
+      "get": {
+        "operationId": "PortalCheckpointMediaController_file",
+        "parameters": [
+          {
+            "name": "mediaId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Stream one media file (dev; prod detail responses carry presigned S3 GET URLs)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
     "/partner/v1/pricelist": {
       "get": {
         "operationId": "PricelistController_quote",
@@ -2166,6 +2678,151 @@
         },
         "required": [
           "plateNumber"
+        ]
+      },
+      "CreateCheckpointDto": {
+        "type": "object",
+        "properties": {
+          "plateNumber": {
+            "type": "string",
+            "example": "B 1793 SCP",
+            "description": "Nomor plat (must be a registered plate)"
+          },
+          "handoverType": {
+            "type": "string",
+            "enum": [
+              "delivery_to_customer",
+              "return_from_customer",
+              "delivery_to_driver",
+              "return_from_driver"
+            ],
+            "example": "delivery_to_customer"
+          },
+          "counterpartName": {
+            "type": "string",
+            "example": "Budi Santoso",
+            "description": "Nama pihak penerima/penyerah"
+          },
+          "counterpartPhone": {
+            "type": "string",
+            "example": "0812xxxxxxx"
+          }
+        },
+        "required": [
+          "plateNumber",
+          "handoverType"
+        ]
+      },
+      "UpdateCheckpointDto": {
+        "type": "object",
+        "properties": {
+          "counterpartName": {
+            "type": "string",
+            "example": "Budi Santoso"
+          },
+          "counterpartPhone": {
+            "type": "string",
+            "example": "0812xxxxxxx"
+          },
+          "odometerKm": {
+            "type": "number",
+            "example": 15320,
+            "description": "Odometer (km)"
+          },
+          "batteryPercent": {
+            "type": "number",
+            "example": 87,
+            "description": "Level baterai (%)"
+          },
+          "generalNotes": {
+            "type": "string",
+            "example": "Unit dalam kondisi bersih"
+          }
+        }
+      },
+      "UpdateCheckpointPointDto": {
+        "type": "object",
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "example": true,
+            "description": "Lolos inspeksi (true/false)"
+          },
+          "note": {
+            "type": "string",
+            "example": "Baret halus di pintu kiri depan"
+          }
+        }
+      },
+      "PresignCheckpointMediaDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "photo",
+              "signature_partner",
+              "signature_counterpart"
+            ],
+            "example": "photo"
+          },
+          "pointKey": {
+            "type": "string",
+            "enum": [
+              "exterior_front",
+              "exterior_rear",
+              "exterior_left",
+              "exterior_right",
+              "interior_front",
+              "interior_rear",
+              "dashboard_odometer",
+              "tires_wheels",
+              "charging_port",
+              "keys_documents"
+            ],
+            "description": "Required for kind=photo, forbidden for signatures"
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "image/jpeg",
+              "image/png"
+            ],
+            "example": "image/jpeg"
+          },
+          "sizeBytes": {
+            "type": "number",
+            "example": 350000,
+            "description": "Bytes, max 5242880"
+          }
+        },
+        "required": [
+          "kind",
+          "contentType",
+          "sizeBytes"
+        ]
+      },
+      "CompleteCheckpointDto": {
+        "type": "object",
+        "properties": {
+          "odometerKm": {
+            "type": "number",
+            "example": 15320,
+            "description": "Odometer (km)"
+          },
+          "batteryPercent": {
+            "type": "number",
+            "example": 87,
+            "description": "Level baterai (%)"
+          },
+          "generalNotes": {
+            "type": "string",
+            "example": "Serah terima berjalan lancar"
+          }
+        },
+        "required": [
+          "odometerKm",
+          "batteryPercent"
         ]
       },
       "CreatePartnerOrderDto": {
