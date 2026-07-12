@@ -273,6 +273,13 @@ describe('partner checkpoints (handover inspection)', () => {
     expect(res.body.data[0].id).toBe(deliveryId);
     expect(res.body.data[0].photoCount).toBe(10);
 
+    // Partial plate search: a middle fragment of the plate still matches
+    const partial = await agentA
+      .get('/partner/portal/checkpoints')
+      .query({ plate: PLATE.split(' ')[1] })
+      .expect(200);
+    expect(partial.body.meta.total).toBeGreaterThanOrEqual(1);
+
     const none = await agentB.get('/partner/portal/checkpoints').expect(200);
     expect(none.body.meta.total).toBe(0);
   });
