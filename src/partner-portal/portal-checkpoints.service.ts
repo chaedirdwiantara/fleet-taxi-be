@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, isNotNull, lt, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { Pagination } from '../common/util/pagination';
 import { normalizePlate } from '../common/util/plate';
@@ -105,8 +105,10 @@ export class PortalCheckpointsService {
   }> {
     const conditions = [eq(checkpoints.partnerId, partnerId)];
     if (opts.plate) {
+      // Partial match so the list-page search finds "2437" in "B2437SNC";
+      // norm is [A-Z0-9] only, so no LIKE metacharacters to escape.
       const norm = normalizePlate(opts.plate);
-      if (norm) conditions.push(eq(checkpoints.plateNumberNorm, norm));
+      if (norm) conditions.push(ilike(checkpoints.plateNumberNorm, `%${norm}%`));
     }
     if (opts.handoverType) conditions.push(eq(checkpoints.handoverType, opts.handoverType));
     if (opts.status) conditions.push(eq(checkpoints.status, opts.status));
