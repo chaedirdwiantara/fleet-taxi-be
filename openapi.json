@@ -2254,6 +2254,221 @@
         ]
       }
     },
+    "/partner/portal/debt-summary": {
+      "get": {
+        "operationId": "PortalDebtController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 10,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "aktif",
+                "nonaktif"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "cabang",
+            "required": false,
+            "in": "query",
+            "description": "Exact cabang from /debt-summary/filters",
+            "schema": {}
+          },
+          {
+            "name": "koordinator",
+            "required": false,
+            "in": "query",
+            "description": "Exact koordinator from /debt-summary/filters",
+            "schema": {}
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Substring on driver name or plate",
+            "schema": {}
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "driverName",
+                "cabang",
+                "koordinator",
+                "depositTerbayar",
+                "tagihanSetoran",
+                "totalTagihan",
+                "selisihDeposit"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Own debt summary per driver (scoped to registered plates)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/debt-summary/filters": {
+      "get": {
+        "operationId": "PortalDebtController_filters",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Dropdown options (cabang, koordinator) for the debt summary",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/debt-summary/export": {
+      "get": {
+        "operationId": "PortalDebtController_export",
+        "parameters": [
+          {
+            "name": "format",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "xlsx"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "aktif",
+                "nonaktif"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "cabang",
+            "required": false,
+            "in": "query",
+            "description": "Exact cabang from /debt-summary/filters",
+            "schema": {}
+          },
+          {
+            "name": "koordinator",
+            "required": false,
+            "in": "query",
+            "description": "Exact koordinator from /debt-summary/filters",
+            "schema": {}
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Substring on driver name or plate",
+            "schema": {}
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "driverName",
+                "cabang",
+                "koordinator",
+                "depositTerbayar",
+                "tagihanSetoran",
+                "totalTagihan",
+                "selisihDeposit"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Export the filtered debt summary (?format=xlsx)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
     "/partner/portal/rentals/cogs-defaults": {
       "get": {
         "operationId": "PartnerRentalsController_listCogsDefaults",
@@ -2614,6 +2829,810 @@
           }
         ],
         "summary": "Toggle Belum/Sudah Dibayar on one own rental",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/driver-registrations": {
+      "get": {
+        "operationId": "PortalDriverRegistrationsController_list",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Search name / driver code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List own driver registrations (pending/rejected, paginated)",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "post": {
+        "operationId": "PortalDriverRegistrationsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDriverRegistrationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Register a driver candidate (plate must be registered when set)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/driver-registrations/{id}": {
+      "get": {
+        "operationId": "PortalDriverRegistrationsController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "One own registration incl. documents",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "patch": {
+        "operationId": "PortalDriverRegistrationsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDriverRegistrationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Edit registration master data",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "delete": {
+        "operationId": "PortalDriverRegistrationsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete an unapproved registration (hard delete incl. documents)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/driver-registrations/{id}/doc-check": {
+      "post": {
+        "operationId": "PortalDriverRegistrationsController_docCheck",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriverDocCheckDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Record the KTP/SIM/SKCK verification result",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/driver-registrations/{id}/deposit": {
+      "post": {
+        "operationId": "PortalDriverRegistrationsController_setDeposit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDriverDepositDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Record the deposit amount (requires an uploaded deposit proof)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/driver-registrations/{id}/deposit/decision": {
+      "post": {
+        "operationId": "PortalDriverRegistrationsController_decideDeposit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriverDecisionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Approve/reject the waiting deposit",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/driver-registrations/{id}/verify": {
+      "post": {
+        "operationId": "PortalDriverRegistrationsController_verify",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyDriverRegistrationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Final verification: approve (assigns driver code) or reject the registration",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/drivers/documents/{driverId}/presign": {
+      "post": {
+        "operationId": "PortalDriverDocumentsController_presign",
+        "parameters": [
+          {
+            "name": "driverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignDriverDocumentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create a pending document row and get an upload URL (S3 presigned PUT in prod)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/drivers/documents/{driverId}/{documentId}/confirm": {
+      "post": {
+        "operationId": "PortalDriverDocumentsController_confirm",
+        "parameters": [
+          {
+            "name": "driverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Confirm an upload finished (marks it uploaded, replaces the previous of its kind)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/drivers/documents/{driverId}/{documentId}": {
+      "delete": {
+        "operationId": "PortalDriverDocumentsController_remove",
+        "parameters": [
+          {
+            "name": "driverId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete one driver document",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/drivers/documents/{documentId}/upload": {
+      "put": {
+        "operationId": "PortalDriverDocumentsController_upload",
+        "parameters": [
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Upload sink for presigned documents (dev; prod presigns S3)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/drivers/documents/{documentId}/file": {
+      "get": {
+        "operationId": "PortalDriverDocumentsController_file",
+        "parameters": [
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Stream one document (dev; prod detail responses carry presigned S3 GET URLs)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/drivers": {
+      "get": {
+        "operationId": "PortalDriversController_list",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Search name / driver code / email",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plate",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "active",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List own active drivers (paginated, filterable)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/drivers/{id}": {
+      "get": {
+        "operationId": "PortalDriversController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "One own active driver incl. documents",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "patch": {
+        "operationId": "PortalDriversController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDriverDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Edit driver master data / toggle isActive",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/drivers/{id}/resign": {
+      "post": {
+        "operationId": "PortalDriversController_resign",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Resign the driver (moves them to the resignation list)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/driver-resignations": {
+      "get": {
+        "operationId": "PortalDriverResignationsController_list",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Search name / driver code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 50,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List own resigned drivers (paginated, newest resignation first)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/driver-resignations/{id}": {
+      "get": {
+        "operationId": "PortalDriverResignationsController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "One own resignation incl. documents",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/driver-resignations/{id}/deposit-return": {
+      "post": {
+        "operationId": "PortalDriverResignationsController_requestReturn",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Request the deposit return decision (requires an uploaded return proof)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/driver-resignations/{id}/deposit-return/decision": {
+      "post": {
+        "operationId": "PortalDriverResignationsController_decideReturn",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriverDecisionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Approve/reject the waiting deposit return",
         "tags": [
           "partner-portal"
         ]
@@ -3355,6 +4374,265 @@
         "required": [
           "paymentStatus"
         ]
+      },
+      "CreateDriverRegistrationDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Budi Santoso"
+          },
+          "email": {
+            "type": "string",
+            "example": "budi@example.com"
+          },
+          "phone": {
+            "type": "string",
+            "example": "0812xxxxxxx"
+          },
+          "address": {
+            "type": "string",
+            "example": "Jl. Melati No. 1, Jakarta Selatan"
+          },
+          "ktpNo": {
+            "type": "string",
+            "example": "3174xxxxxxxxxxxx",
+            "description": "Nomor KTP"
+          },
+          "simNo": {
+            "type": "string",
+            "example": "1234-5678-901234",
+            "description": "Nomor SIM"
+          },
+          "simExpired": {
+            "type": "string",
+            "example": "2027-03-15",
+            "description": "Masa berlaku SIM (YYYY-MM-DD)"
+          },
+          "plateNumber": {
+            "type": "string",
+            "example": "B 1793 SCP",
+            "description": "Plat unit yang dioperasikan (harus plat terdaftar partner)"
+          },
+          "bankAccount": {
+            "type": "string",
+            "example": "BCA 1234567890 a.n. Budi",
+            "description": "Rekening driver"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateDriverRegistrationDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Budi Santoso"
+          },
+          "email": {
+            "type": "string",
+            "example": "budi@example.com"
+          },
+          "phone": {
+            "type": "string",
+            "example": "0812xxxxxxx"
+          },
+          "address": {
+            "type": "string",
+            "example": "Jl. Melati No. 1, Jakarta Selatan"
+          },
+          "ktpNo": {
+            "type": "string",
+            "example": "3174xxxxxxxxxxxx",
+            "description": "Nomor KTP"
+          },
+          "simNo": {
+            "type": "string",
+            "example": "1234-5678-901234",
+            "description": "Nomor SIM"
+          },
+          "simExpired": {
+            "type": "string",
+            "example": "2027-03-15",
+            "description": "Masa berlaku SIM (YYYY-MM-DD)"
+          },
+          "plateNumber": {
+            "type": "string",
+            "example": "B 1793 SCP",
+            "description": "Plat unit yang dioperasikan (harus plat terdaftar partner)"
+          },
+          "bankAccount": {
+            "type": "string",
+            "example": "BCA 1234567890 a.n. Budi",
+            "description": "Rekening driver"
+          }
+        }
+      },
+      "DriverDocCheckDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ktp",
+              "sim",
+              "skck"
+            ],
+            "example": "ktp"
+          },
+          "verified": {
+            "type": "boolean",
+            "example": true,
+            "description": "Hasil pemeriksaan dokumen"
+          }
+        },
+        "required": [
+          "kind",
+          "verified"
+        ]
+      },
+      "SetDriverDepositDto": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "example": 1500000,
+            "description": "Nominal deposit (rupiah bulat)"
+          }
+        },
+        "required": [
+          "amount"
+        ]
+      },
+      "DriverDecisionDto": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "example": "approve"
+          },
+          "note": {
+            "type": "string",
+            "example": "Nominal tidak sesuai",
+            "description": "Catatan (saat menolak)"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "VerifyDriverRegistrationDto": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "example": "approve"
+          },
+          "rejectNote": {
+            "type": "string",
+            "example": "Dokumen tidak jelas",
+            "description": "Alasan penolakan"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "PresignDriverDocumentDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ktp",
+              "sim",
+              "skck",
+              "deposit_proof",
+              "deposit_return_proof"
+            ],
+            "example": "ktp"
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "application/pdf"
+            ],
+            "example": "image/jpeg"
+          },
+          "sizeBytes": {
+            "type": "number",
+            "example": 350000,
+            "description": "Bytes, max 10485760"
+          }
+        },
+        "required": [
+          "kind",
+          "contentType",
+          "sizeBytes"
+        ]
+      },
+      "UpdateDriverDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Budi Santoso"
+          },
+          "email": {
+            "type": "string",
+            "example": "budi@example.com"
+          },
+          "phone": {
+            "type": "string",
+            "example": "0812xxxxxxx"
+          },
+          "address": {
+            "type": "string",
+            "example": "Jl. Melati No. 1, Jakarta Selatan"
+          },
+          "ktpNo": {
+            "type": "string",
+            "example": "3174xxxxxxxxxxxx",
+            "description": "Nomor KTP"
+          },
+          "simNo": {
+            "type": "string",
+            "example": "1234-5678-901234",
+            "description": "Nomor SIM"
+          },
+          "simExpired": {
+            "type": "string",
+            "example": "2027-03-15",
+            "description": "Masa berlaku SIM (YYYY-MM-DD)"
+          },
+          "plateNumber": {
+            "type": "string",
+            "example": "B 1793 SCP",
+            "description": "Plat unit yang dioperasikan (harus plat terdaftar partner)"
+          },
+          "bankAccount": {
+            "type": "string",
+            "example": "BCA 1234567890 a.n. Budi",
+            "description": "Rekening driver"
+          },
+          "isActive": {
+            "type": "boolean",
+            "example": true,
+            "description": "Aktif/nonaktifkan driver"
+          }
+        }
       },
       "CreatePartnerOrderDto": {
         "type": "object",
