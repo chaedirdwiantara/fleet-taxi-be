@@ -35,6 +35,12 @@ export function configureApp(app: INestApplication): void {
   // Checkpoint media upload sink takes a raw image body (dev path of the
   // presigned-upload flow); scoped to the route so JSON parsing is untouched.
   app.use('/partner/portal/checkpoints/media', express.raw({ type: 'image/*', limit: '6mb' }));
+  // Driver document upload sink (KTP/SIM/SKCK scans, deposit proofs) — same
+  // dev-path presigned-upload flow; documents may also be PDFs.
+  app.use(
+    '/partner/portal/drivers/documents',
+    express.raw({ type: ['image/*', 'application/pdf'], limit: '11mb' }),
+  );
   app.use(
     buildSessionMiddleware(
       {

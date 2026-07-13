@@ -50,6 +50,13 @@
       "when": 1783899016373,
       "tag": "0006_marvelous_shinobi_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783952930168,
+      "tag": "0007_worthless_the_captain",
+      "breakpoints": true
     }
   ]
 }
