@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
+import { normalizePlate } from '../common/util/plate';
+import { ExceptionsService, type CreateExceptionInput } from '../fleet/exceptions.service';
 import {
   toCellBreakdown,
   toFleetGrid,
@@ -29,6 +31,7 @@ export class PortalFleetService {
     private readonly plates: PortalPlatesService,
     private readonly gojek: GojekGridService,
     private readonly grab: GrabGridService,
+    private readonly exceptions: ExceptionsService,
   ) {}
 
   /** norm → Type map from the partner's registered plates (Daftarkan Plat). */
@@ -80,6 +83,40 @@ export class PortalFleetService {
     const scopePlates = await this.plates.registeredNorms(partnerId);
     const result = await this.gojek.buildGrid(month, year, { scopePlates });
     return toGojekSummary(result, day);
+  }
+
+  // ── exceptions ("Kelola Jadwal"), scoped to the partner's own plates ───────
+  // fleet_exceptions has no owner column: ownership is enforced by intersecting
+  // the (normalized) plate with the partner's registered allowlist on every op.
+
+  /** Plate ∈ allowlist or throw — the partner can only touch its own plates. */
+  private async requireOwnPlate(partnerId: number, plate: string): Promise<string> {
+    const norm = normalizePlate(plate);
+    const scopePlates = await this.plates.registeredNorms(partnerId);
+    if (!norm || !scopePlates.includes(norm)) {
+      throw new ForbiddenException('Plat tidak terdaftar pada akun partner ini');
+    }
+    return norm;
+  }
+
+  async listExceptions(partnerId: number, month: number, year: number) {
+    const scopePlates = await this.plates.registeredNorms(partnerId);
+    const rows = await this.exceptions.list(month, year);
+    // vehicle_plate is stored normalized (ExceptionsService.create), so a plain
+    // set intersection is the scoping.
+    const allowed = new Set(scopePlates);
+    return rows.filter((r) => allowed.has(normalizePlate(r.vehiclePlate)));
+  }
+
+  async createException(partnerId: number, input: CreateExceptionInput) {
+    await this.requireOwnPlate(partnerId, input.vehiclePlate);
+    return this.exceptions.create(input);
+  }
+
+  async removeException(partnerId: number, id: number): Promise<{ deleted: true }> {
+    const row = await this.exceptions.getById(id);
+    await this.requireOwnPlate(partnerId, row.vehiclePlate);
+    return this.exceptions.remove(id);
   }
 
   async grabGrid(partnerId: number, month: number, year: number): Promise<GrabGridDto> {

@@ -32,8 +32,12 @@ export class AdminFleetService {
     year: number,
     filters: { rentalPartners?: string[]; plate?: string } = {},
   ): Promise<FleetGridDto> {
-    const { norms, typeByNorm } = await this.registeredPlates.unionScope();
-    const result = await this.gojek.buildGrid(month, year, { ...filters, scopePlates: norms });
+    const { norms, typeByNorm, partnerNameByNorm } = await this.registeredPlates.unionScope();
+    const result = await this.gojek.buildGrid(month, year, {
+      ...filters,
+      scopePlates: norms,
+      partnerNameByNorm,
+    });
     const dto = toFleetGrid(result);
     // Surface the Type entered in Daftarkan Plat when the grid has none (no
     // admin fleet target set it) — same sync the partner portal does.
@@ -57,9 +61,18 @@ export class AdminFleetService {
     return bucket ? toCellBreakdown(bucket, plate, day) : null;
   }
 
-  async gojekSummary(month: number, year: number, day?: number): Promise<GojekSummaryDto> {
-    const { norms } = await this.registeredPlates.unionScope();
-    const result = await this.gojek.buildGrid(month, year, { scopePlates: norms });
+  async gojekSummary(
+    month: number,
+    year: number,
+    day?: number,
+    rentalPartners?: string[],
+  ): Promise<GojekSummaryDto> {
+    const { norms, partnerNameByNorm } = await this.registeredPlates.unionScope();
+    const result = await this.gojek.buildGrid(month, year, {
+      scopePlates: norms,
+      partnerNameByNorm,
+      rentalPartners,
+    });
     return toGojekSummary(result, day);
   }
 

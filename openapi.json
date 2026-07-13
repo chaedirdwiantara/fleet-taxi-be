@@ -779,6 +779,17 @@
               "example": 15,
               "type": "string"
             }
+          },
+          {
+            "name": "rentalPartner",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         ],
         "responses": {
@@ -1615,6 +1626,102 @@
           }
         ],
         "summary": "Own Gojek dashboard aggregates (cards + driver activity + charts)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/fleet/gojek/exceptions": {
+      "get": {
+        "operationId": "PortalFleetController_gojekExceptions",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Own exception schedule (Kelola Jadwal) for a period",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "post": {
+        "operationId": "PortalFleetController_createGojekException",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExceptionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Mark an exception on an own plate (rental / maintenance / free-day)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/fleet/gojek/exceptions/{id}": {
+      "delete": {
+        "operationId": "PortalFleetController_deleteGojekException",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete an own-plate exception",
         "tags": [
           "partner-portal"
         ]

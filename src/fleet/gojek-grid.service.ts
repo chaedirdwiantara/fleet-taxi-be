@@ -55,6 +55,10 @@ export class GojekGridService {
       // (admin); an EMPTY array = a partner with no registered plates → empty grid.
       // Never populate this from client input.
       scopePlates?: string[];
+      // Server-derived norm → registering-partner-name map (Daftarkan Plat).
+      // When present it is the authoritative Rental Partner label — the legacy
+      // fleet_targets.rental_partner string only fills unregistered plates.
+      partnerNameByNorm?: Map<string, string>;
     } = {},
   ): Promise<GojekGridResult> {
     const { db } = this.database;
@@ -254,6 +258,12 @@ export class GojekGridService {
           }
         }
       }
+
+      // Rental Partner syncs from the partner who registered the plate; the
+      // admin-entered fleet_targets string is only a fallback for plates that
+      // predate registration.
+      const registeredPartner = filters.partnerNameByNorm?.get(plateClean);
+      if (registeredPartner) v.rentalPartner = registeredPartner;
 
       let dailyTarget =
         manualTarget > 0

@@ -112,6 +112,9 @@ export interface GojekSummaryDto {
   globalSummary: GlobalSummaryDto;
   driverActivity: DriverActivityDto;
   charts: FleetChartsDto;
+  // Filter options for the dashboard's rental-partner select — computed over
+  // the UNFILTERED grid so options don't disappear once a filter is applied.
+  availableRentalPartners: string[];
 }
 
 // ---- mappers ---------------------------------------------------------------
@@ -291,5 +294,6 @@ export function toGojekSummary(result: GojekGridResult, day?: number): GojekSumm
     globalSummary: toGlobalSummary(result),
     driverActivity: toDriverActivity(result, day),
     charts: toCharts(result),
+    availableRentalPartners: result.availableRentalPartners,
   };
 }
