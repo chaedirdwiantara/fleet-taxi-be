@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
+import express from 'express';
 import helmet from 'helmet';
 import { corsOrigins, Env } from './config/env';
 import { buildSessionMiddleware } from './config/session';
@@ -30,6 +31,10 @@ export function configureApp(app: INestApplication): void {
   app.use(helmet({ contentSecurityPolicy: false }));
 
   app.use(cookieParser());
+
+  // Checkpoint media upload sink takes a raw image body (dev path of the
+  // presigned-upload flow); scoped to the route so JSON parsing is untouched.
+  app.use('/partner/portal/checkpoints/media', express.raw({ type: 'image/*', limit: '6mb' }));
   app.use(
     buildSessionMiddleware(
       {

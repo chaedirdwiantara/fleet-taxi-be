@@ -202,7 +202,7 @@
             "session": []
           }
         ],
-        "summary": "Destroy the session",
+        "summary": "Log out of the admin audience (keeps a partner session)",
         "tags": [
           "admin-auth"
         ]
@@ -1715,6 +1715,910 @@
         ]
       }
     },
+    "/partner/portal/checkpoints": {
+      "get": {
+        "operationId": "PortalCheckpointsController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 50,
+              "type": "string"
+            }
+          },
+          {
+            "name": "plate",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "handoverType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "delivery_to_customer",
+                "return_from_customer",
+                "delivery_to_driver",
+                "return_from_driver"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "draft",
+                "completed"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "month",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "string"
+            }
+          },
+          {
+            "name": "year",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List own handover checkpoints (paginated, filterable)",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "post": {
+        "operationId": "PortalCheckpointsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCheckpointDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create a draft checkpoint (plate must be registered)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}": {
+      "get": {
+        "operationId": "PortalCheckpointsController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "One own checkpoint: header, points, media, signatures",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "patch": {
+        "operationId": "PortalCheckpointsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCheckpointDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Update draft checkpoint header fields",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "delete": {
+        "operationId": "PortalCheckpointsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete a DRAFT checkpoint (completed berita acara are immutable — 409)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/points/{pointKey}": {
+      "patch": {
+        "operationId": "PortalCheckpointsController_updatePoint",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "pointKey",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "exterior_front",
+                "exterior_rear",
+                "exterior_left",
+                "exterior_right",
+                "interior_front",
+                "interior_rear",
+                "dashboard_odometer",
+                "tires_wheels",
+                "charging_port",
+                "keys_documents"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCheckpointPointDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Update one inspection point (passed / note)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/media/presign": {
+      "post": {
+        "operationId": "PortalCheckpointsController_presign",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignCheckpointMediaDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create a pending media row and get an upload URL (S3 presigned PUT in prod)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/media/{mediaId}/confirm": {
+      "post": {
+        "operationId": "PortalCheckpointsController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "mediaId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Confirm an upload finished (marks media uploaded)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/media/{mediaId}": {
+      "delete": {
+        "operationId": "PortalCheckpointsController_deleteMedia",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "mediaId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete one media item from a draft checkpoint",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/complete": {
+      "post": {
+        "operationId": "PortalCheckpointsController_complete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteCheckpointDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Complete the checkpoint (validates points, photos, signatures)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/comparison": {
+      "get": {
+        "operationId": "PortalCheckpointsController_comparison",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Latest completed paired delivery checkpoint for comparison (null when n/a)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/{id}/pdf": {
+      "get": {
+        "operationId": "PortalCheckpointsController_exportPdf",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Berita acara serah terima as PDF (completed checkpoints only)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/media/{mediaId}/upload": {
+      "put": {
+        "operationId": "PortalCheckpointMediaController_upload",
+        "parameters": [
+          {
+            "name": "mediaId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Upload sink for presigned media (dev; prod presigns S3 directly)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/checkpoints/media/{mediaId}/file": {
+      "get": {
+        "operationId": "PortalCheckpointMediaController_file",
+        "parameters": [
+          {
+            "name": "mediaId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Stream one media file (dev; prod detail responses carry presigned S3 GET URLs)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals/cogs-defaults": {
+      "get": {
+        "operationId": "PartnerRentalsController_listCogsDefaults",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Per-partner default COGS/day per vehicle type (lazy-seeded)",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "put": {
+        "operationId": "PartnerRentalsController_upsertCogsDefault",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertCogsDefaultDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Upsert one COGS default (key present → update, absent → create)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals/export": {
+      "get": {
+        "operationId": "PartnerRentalsController_export",
+        "parameters": [
+          {
+            "name": "format",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "xlsx",
+                "pdf"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "month",
+            "required": false,
+            "in": "query",
+            "description": "1..12, default current WIB month",
+            "schema": {
+              "example": 7,
+              "type": "number"
+            }
+          },
+          {
+            "name": "year",
+            "required": false,
+            "in": "query",
+            "description": "Default current WIB year",
+            "schema": {
+              "example": 2026,
+              "type": "number"
+            }
+          },
+          {
+            "name": "region",
+            "required": false,
+            "in": "query",
+            "description": "Exact region; absent/empty = all",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Substring on plate/customer/service area",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "date",
+                "duration",
+                "status",
+                "omset",
+                "cogs"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Export the monthly rental recap (?format=pdf|xlsx)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals": {
+      "get": {
+        "operationId": "PartnerRentalsController_list",
+        "parameters": [
+          {
+            "name": "month",
+            "required": false,
+            "in": "query",
+            "description": "1..12, default current WIB month",
+            "schema": {
+              "example": 7,
+              "type": "number"
+            }
+          },
+          {
+            "name": "year",
+            "required": false,
+            "in": "query",
+            "description": "Default current WIB year",
+            "schema": {
+              "example": 2026,
+              "type": "number"
+            }
+          },
+          {
+            "name": "region",
+            "required": false,
+            "in": "query",
+            "description": "Exact region; absent/empty = all",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Substring on plate/customer/service area",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "date",
+                "duration",
+                "status",
+                "omset",
+                "cogs"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Monthly rental recap: summary, nett per type, regions, items",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "post": {
+        "operationId": "PartnerRentalsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRentalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create a rental transaction (overlap-guarded per plate)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals/{id}": {
+      "put": {
+        "operationId": "PartnerRentalsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRentalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Edit one own rental transaction",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "delete": {
+        "operationId": "PartnerRentalsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete one own rental transaction",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals/{id}/payment-status": {
+      "patch": {
+        "operationId": "PartnerRentalsController_updatePaymentStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePaymentStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Toggle Belum/Sudah Dibayar on one own rental",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
     "/partner/v1/pricelist": {
       "get": {
         "operationId": "PricelistController_quote",
@@ -2166,6 +3070,290 @@
         },
         "required": [
           "plateNumber"
+        ]
+      },
+      "CreateCheckpointDto": {
+        "type": "object",
+        "properties": {
+          "plateNumber": {
+            "type": "string",
+            "example": "B 1793 SCP",
+            "description": "Nomor plat (must be a registered plate)"
+          },
+          "handoverType": {
+            "type": "string",
+            "enum": [
+              "delivery_to_customer",
+              "return_from_customer",
+              "delivery_to_driver",
+              "return_from_driver"
+            ],
+            "example": "delivery_to_customer"
+          },
+          "counterpartName": {
+            "type": "string",
+            "example": "Budi Santoso",
+            "description": "Nama pihak penerima/penyerah"
+          },
+          "counterpartPhone": {
+            "type": "string",
+            "example": "0812xxxxxxx"
+          }
+        },
+        "required": [
+          "plateNumber",
+          "handoverType"
+        ]
+      },
+      "UpdateCheckpointDto": {
+        "type": "object",
+        "properties": {
+          "counterpartName": {
+            "type": "string",
+            "example": "Budi Santoso"
+          },
+          "counterpartPhone": {
+            "type": "string",
+            "example": "0812xxxxxxx"
+          },
+          "odometerKm": {
+            "type": "number",
+            "example": 15320,
+            "description": "Odometer (km)"
+          },
+          "batteryPercent": {
+            "type": "number",
+            "example": 87,
+            "description": "Level baterai (%)"
+          },
+          "generalNotes": {
+            "type": "string",
+            "example": "Unit dalam kondisi bersih"
+          }
+        }
+      },
+      "UpdateCheckpointPointDto": {
+        "type": "object",
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "example": true,
+            "description": "Lolos inspeksi (true/false)"
+          },
+          "note": {
+            "type": "string",
+            "example": "Baret halus di pintu kiri depan"
+          }
+        }
+      },
+      "PresignCheckpointMediaDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "photo",
+              "signature_partner",
+              "signature_counterpart"
+            ],
+            "example": "photo"
+          },
+          "pointKey": {
+            "type": "string",
+            "enum": [
+              "exterior_front",
+              "exterior_rear",
+              "exterior_left",
+              "exterior_right",
+              "interior_front",
+              "interior_rear",
+              "dashboard_odometer",
+              "tires_wheels",
+              "charging_port",
+              "keys_documents"
+            ],
+            "description": "Required for kind=photo, forbidden for signatures"
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "image/jpeg",
+              "image/png"
+            ],
+            "example": "image/jpeg"
+          },
+          "sizeBytes": {
+            "type": "number",
+            "example": 350000,
+            "description": "Bytes, max 5242880"
+          }
+        },
+        "required": [
+          "kind",
+          "contentType",
+          "sizeBytes"
+        ]
+      },
+      "CompleteCheckpointDto": {
+        "type": "object",
+        "properties": {
+          "odometerKm": {
+            "type": "number",
+            "example": 15320,
+            "description": "Odometer (km)"
+          },
+          "batteryPercent": {
+            "type": "number",
+            "example": 87,
+            "description": "Level baterai (%)"
+          },
+          "generalNotes": {
+            "type": "string",
+            "example": "Serah terima berjalan lancar"
+          }
+        },
+        "required": [
+          "odometerKm",
+          "batteryPercent"
+        ]
+      },
+      "UpsertCogsDefaultDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "air_ev",
+            "description": "Present → update that row; absent → create (key slugified from label)"
+          },
+          "label": {
+            "type": "string",
+            "example": "Air EV"
+          },
+          "cogsPerDay": {
+            "type": "number",
+            "example": 335833,
+            "description": "Integer rupiah"
+          }
+        },
+        "required": [
+          "label",
+          "cogsPerDay"
+        ]
+      },
+      "CreateRentalDto": {
+        "type": "object",
+        "properties": {
+          "plateNumber": {
+            "type": "string",
+            "example": "B 1793 SCP",
+            "description": "Nomor plat (as entered)"
+          },
+          "vehicleType": {
+            "type": "string",
+            "example": "Air EV"
+          },
+          "region": {
+            "type": "string",
+            "example": "Jakarta"
+          },
+          "startDate": {
+            "type": "string",
+            "example": "2026-07-01",
+            "description": "YYYY-MM-DD, inclusive"
+          },
+          "endDate": {
+            "type": "string",
+            "example": "2026-07-27",
+            "description": "YYYY-MM-DD, inclusive"
+          },
+          "price": {
+            "type": "number",
+            "example": 450000,
+            "description": "Integer rupiah, per priceUnit"
+          },
+          "priceUnit": {
+            "type": "string",
+            "enum": [
+              "hari",
+              "bulan"
+            ],
+            "description": "Default 'hari'"
+          },
+          "cogsPerDay": {
+            "type": "number",
+            "example": 335833,
+            "description": "COGS per day, integer rupiah"
+          },
+          "cogsType": {
+            "type": "string",
+            "example": "Air EV"
+          },
+          "additionalCost": {
+            "type": "number",
+            "description": "TOTAL for the transaction (not per day), integer rupiah. Default 0."
+          },
+          "additionalCostDescription": {
+            "type": "string",
+            "example": "Antar-jemput bandara"
+          },
+          "deposit": {
+            "type": "number",
+            "description": "Integer rupiah. Default 0."
+          },
+          "rentalType": {
+            "type": "string",
+            "enum": [
+              "Dengan Driver",
+              "Lepas Kunci"
+            ]
+          },
+          "infoSource": {
+            "type": "string",
+            "example": "Instagram"
+          },
+          "serviceArea": {
+            "type": "string",
+            "example": "Jabodetabek"
+          },
+          "customerName": {
+            "type": "string",
+            "example": "Budi Santoso"
+          },
+          "customerPhone": {
+            "type": "string",
+            "example": "+62 812-3456-7890"
+          },
+          "paymentStatus": {
+            "type": "string",
+            "enum": [
+              "Belum Dibayar",
+              "Sudah Dibayar"
+            ],
+            "description": "Default 'Belum Dibayar'"
+          }
+        },
+        "required": [
+          "plateNumber",
+          "startDate",
+          "endDate",
+          "price",
+          "cogsPerDay"
+        ]
+      },
+      "UpdatePaymentStatusDto": {
+        "type": "object",
+        "properties": {
+          "paymentStatus": {
+            "type": "string",
+            "enum": [
+              "Belum Dibayar",
+              "Sudah Dibayar"
+            ],
+            "example": "Sudah Dibayar"
+          }
+        },
+        "required": [
+          "paymentStatus"
         ]
       },
       "CreatePartnerOrderDto": {

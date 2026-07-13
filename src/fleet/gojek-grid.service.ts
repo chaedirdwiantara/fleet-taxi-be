@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
 import { normalizePlate } from '../common/util/plate';
 import { byteCompare } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
-import { fleetExceptions, fleetImportDetails, fleetTargets } from '../db/schema';
+import { fleetExceptions, fleetImportDetails, fleetTargets, rentals } from '../db/schema';
 import {
   DEFAULT_DAILY_TARGET,
   DailyDetailBucket,
@@ -193,6 +193,37 @@ export class GojekGridService {
         keterangan: e.keterangan,
         isBebasSetoran: e.isBebasSetoran,
       });
+    }
+
+    // Rental Monitoring bookings mark their days exactly like bebas-setoran
+    // exceptions (legacy parity: jadwal-mobil-cogs wrote is_bebas_setoran=1
+    // day rows into the same table). Explicit fleet_exceptions win on clash.
+    const mm = String(month).padStart(2, '0');
+    const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const monthStart = `${year}-${mm}-01`;
+    const monthEnd = `${year}-${mm}-${String(lastDayOfMonth).padStart(2, '0')}`;
+    const rentalRows = await db
+      .select({
+        plateNorm: rentals.plateNumberNorm,
+        startDate: rentals.startDate,
+        endDate: rentals.endDate,
+        customerName: rentals.customerName,
+      })
+      .from(rentals)
+      .where(and(lte(rentals.startDate, monthEnd), gte(rentals.endDate, monthStart)));
+    for (const r of rentalRows) {
+      const from = r.startDate < monthStart ? 1 : Number(r.startDate.slice(8, 10));
+      const to = r.endDate > monthEnd ? lastDayOfMonth : Number(r.endDate.slice(8, 10));
+      if (!exceptionsMap.has(r.plateNorm)) exceptionsMap.set(r.plateNorm, new Map());
+      const perDay = exceptionsMap.get(r.plateNorm)!;
+      for (let d = from; d <= to; d++) {
+        if (!perDay.has(d)) {
+          perDay.set(d, {
+            keterangan: r.customerName ? `Rental — ${r.customerName}` : 'Rental',
+            isBebasSetoran: true,
+          });
+        }
+      }
     }
 
     const allTimeMap = await this.fetchAllTimeStats([
