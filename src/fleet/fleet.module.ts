@@ -19,6 +19,6 @@ import { TargetsService } from './targets.service';
     TargetsService,
     DetailsService,
   ],
-  exports: [GojekGridService],
+  exports: [GojekGridService, ExceptionsService],
 })
 export class FleetModule {}

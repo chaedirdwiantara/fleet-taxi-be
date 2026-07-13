@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { asc } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { DatabaseService } from '../db/database.service';
-import { partnerPlates } from '../db/schema';
+import { partnerPlates, partners } from '../db/schema';
 
 /**
  * Union of every partner's registered plates (partner_plates across ALL
@@ -15,24 +15,37 @@ export class RegisteredPlatesService {
   constructor(private readonly database: DatabaseService) {}
 
   /**
-   * All registered plate norms plus a norm → Type map from registration.
-   * Two partners may register the same plate; the earliest registration's
-   * Type wins so the map stays deterministic.
+   * All registered plate norms plus norm → Type and norm → partner-name maps
+   * from registration. Two partners may register the same plate; the earliest
+   * registration wins in both maps so they stay deterministic.
    */
-  async unionScope(): Promise<{ norms: string[]; typeByNorm: Map<string, string> }> {
+  async unionScope(): Promise<{
+    norms: string[];
+    typeByNorm: Map<string, string>;
+    partnerNameByNorm: Map<string, string>;
+  }> {
     const rows = await this.database.db
-      .select({ norm: partnerPlates.plateNumberNorm, vehicleType: partnerPlates.vehicleType })
+      .select({
+        norm: partnerPlates.plateNumberNorm,
+        vehicleType: partnerPlates.vehicleType,
+        partnerName: partners.name,
+      })
       .from(partnerPlates)
+      .innerJoin(partners, eq(partners.id, partnerPlates.partnerId))
       .orderBy(asc(partnerPlates.id));
 
     const norms = new Set<string>();
     const typeByNorm = new Map<string, string>();
+    const partnerNameByNorm = new Map<string, string>();
     for (const row of rows) {
       norms.add(row.norm);
       if (row.vehicleType && !typeByNorm.has(row.norm)) {
         typeByNorm.set(row.norm, row.vehicleType);
       }
+      if (row.partnerName && !partnerNameByNorm.has(row.norm)) {
+        partnerNameByNorm.set(row.norm, row.partnerName);
+      }
     }
-    return { norms: [...norms], typeByNorm };
+    return { norms: [...norms], typeByNorm, partnerNameByNorm };
   }
 }

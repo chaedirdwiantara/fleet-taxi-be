@@ -120,14 +120,21 @@ export class GojekController {
   @ApiQuery({ name: 'month', example: 7 })
   @ApiQuery({ name: 'year', example: 2026 })
   @ApiQuery({ name: 'day', required: false, example: 15 })
+  @ApiQuery({ name: 'rentalPartner', required: false, isArray: true, type: String })
   async summary(
     @Query('month') month: string,
     @Query('year') year: string,
     @Query('day') dayRaw?: string,
+    @Query('rentalPartner') rentalPartner?: string | string[],
   ) {
     const period = parsePeriod(month, year);
     const day = dayRaw ? Number(dayRaw) : undefined;
-    return this.adminFleet.gojekSummary(period.month, period.year, day);
+    return this.adminFleet.gojekSummary(
+      period.month,
+      period.year,
+      day,
+      toStringArray(rentalPartner),
+    );
   }
 
   @Get('performers')
