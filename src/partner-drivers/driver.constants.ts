@@ -2,11 +2,8 @@
  * Constants for partner-portal driver management. Kinds/statuses are stable
  * enum strings shared with the FE via the OpenAPI contract.
  */
-export const DRIVER_REGISTRATION_STATUSES = ['pending', 'approved', 'rejected'] as const;
-export type DriverRegistrationStatus = (typeof DRIVER_REGISTRATION_STATUSES)[number];
-
-export const DRIVER_DEPOSIT_STATUSES = ['none', 'waiting', 'approved', 'rejected'] as const;
-export type DriverDepositStatus = (typeof DRIVER_DEPOSIT_STATUSES)[number];
+export const DRIVER_SOURCES = ['gojek', 'grab', 'manual'] as const;
+export type DriverSource = (typeof DRIVER_SOURCES)[number];
 
 export const DRIVER_DOCUMENT_KINDS = [
   'ktp',
@@ -16,13 +13,6 @@ export const DRIVER_DOCUMENT_KINDS = [
   'deposit_return_proof',
 ] as const;
 export type DriverDocumentKind = (typeof DRIVER_DOCUMENT_KINDS)[number];
-
-/** The three identity documents a partner ticks off before approval. */
-export const DRIVER_CHECKABLE_DOC_KINDS = ['ktp', 'sim', 'skck'] as const;
-export type DriverCheckableDocKind = (typeof DRIVER_CHECKABLE_DOC_KINDS)[number];
-
-export const DRIVER_DECISION_ACTIONS = ['approve', 'reject'] as const;
-export type DriverDecisionAction = (typeof DRIVER_DECISION_ACTIONS)[number];
 
 export const DRIVER_DOCUMENT_CONTENT_TYPES = [
   'image/jpeg',
@@ -43,7 +33,15 @@ export const DRIVER_MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 export const DRIVER_PRESIGN_PUT_TTL_SEC = 300;
 export const DRIVER_PRESIGN_GET_TTL_SEC = 600;
 
-/** Driver code assigned at approval: DRV- + zero-padded row id (DRV-000123). */
+/** Driver code assigned when a sync inserts the row: DRV- + zero-padded id (DRV-000123). */
 export function formatDriverCode(id: number): string {
   return `DRV-${String(id).padStart(6, '0')}`;
+}
+
+/**
+ * Sync identity for a driver name — MUST stay in agreement with the SQL
+ * backfill in migration 0008: upper(regexp_replace(btrim(name), '\s+', ' ', 'g')).
+ */
+export function normalizeDriverName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toUpperCase();
 }

@@ -11,11 +11,15 @@ import {
 import { partners } from './partners';
 
 /**
- * Partner-portal driver management. ONE row per driver across the whole
- * lifecycle: registration (pending/rejected) → active roster (approved) →
- * resigned (resigned_at set). The list endpoints slice on
- * registration_status / resigned_at rather than moving rows between tables,
- * so a driver's documents and deposit history stay attached forever.
+ * Partner-portal driver roster. Rows are SYNCED from the fleet-monitoring
+ * import data (Gojek/Grab) keyed by (partner_id, name_norm); manual edits on
+ * the driver edit page fill in completeness (documents, deposit, bank, …) and
+ * always win over re-syncs. ONE row per driver across the whole lifecycle:
+ * active roster → resigned (resigned_at set) → deposit returned.
+ *
+ * The registration-era columns (registration_status, doc-check flags,
+ * deposit decision fields) are deliberately kept — dropping them would be a
+ * destructive migration — but are no longer exposed through the API.
  *
  * Deposit amounts are integer rupiah (PROJECT-BRIEF.md §7). The plate is
  * stored as text (not an FK) like checkpoints/rentals: the allowlist is
@@ -29,6 +33,9 @@ export const drivers = pgTable(
       .notNull()
       .references(() => partners.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    // Sync identity: uppercase, internal whitespace collapsed, trimmed.
+    nameNorm: text('name_norm'),
+    source: text('source').notNull().default('manual'), // gojek | grab | manual
     email: text('email'),
     phone: text('phone'),
     address: text('address'),
@@ -58,6 +65,8 @@ export const drivers = pgTable(
   (t) => [
     // Postgres allows multiple NULLs, so unapproved drivers don't collide.
     unique('drivers_partner_code_uq').on(t.partnerId, t.driverCode),
+    // Sync upsert key: one roster row per normalized driver name per partner.
+    unique('drivers_partner_name_norm_uq').on(t.partnerId, t.nameNorm),
     index('drivers_partner_created_idx').on(t.partnerId, t.createdAt.desc()),
     index('drivers_partner_reg_status_idx').on(t.partnerId, t.registrationStatus),
     index('drivers_partner_resigned_idx').on(t.partnerId, t.resignedAt),
