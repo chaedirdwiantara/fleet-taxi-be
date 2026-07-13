@@ -2,8 +2,9 @@
  * Legacy-math fixture tests for the Gojek + Grab grids (M3 deliverable).
  * Every expected number below is hand-computed from the legacy
  * AdminFleetMonitoring(Grab)Controller::getIndex rules. These assert the
- * internal service shape (the math engine); the HTTP presenter shape and
- * partner scoping are covered in partner.e2e.spec.ts.
+ * internal service shape (the math engine); per-partner scoping is covered in
+ * partner.e2e.spec.ts. The admin HTTP surface is scoped to the union of every
+ * partner's registered plates (partner_plates) — asserted here.
  * Needs docker-compose Postgres + Redis and applied migrations.
  */
 import { INestApplication } from '@nestjs/common';
@@ -26,6 +27,8 @@ import {
   grabImportDetails,
   grabImports,
   grabTargets,
+  partnerPlates,
+  partners,
   roles,
   userRoles,
   users,
@@ -45,6 +48,8 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
   let grab: GrabGridService;
   let agent: ReturnType<typeof request.agent>;
   let adminId: number;
+  let partnerAId: number;
+  let partnerBId: number;
   const cleanupTargetIds: number[] = [];
 
   beforeAll(async () => {
@@ -169,6 +174,39 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
         isManualPaymentSetoran: 1,
         driverName: 'NOPLAT',
       },
+      // G7773KC: has data but is registered by NO partner -> hidden from the
+      // admin HTTP surface (and its money from the admin summary)
+      {
+        ...base,
+        transactionDate: d(12),
+        vehiclePlate: 'G 7773 KC',
+        vehiclePlateNorm: 'G7773KC',
+        amount: 250000,
+        type: 'GoPay Deduction',
+        driverName: 'RUDI',
+      },
+    ]);
+
+    // two partner accounts; the admin surface is scoped to the UNION of their
+    // registered plates (G7771KA from A, G7772KB from B — never G7773KC)
+    const [partnerA] = await db
+      .insert(partners)
+      .values({ code: `${RUN}A`, name: 'Partner A' })
+      .returning();
+    const [partnerB] = await db
+      .insert(partners)
+      .values({ code: `${RUN}B`, name: 'Partner B' })
+      .returning();
+    partnerAId = partnerA!.id;
+    partnerBId = partnerB!.id;
+    await db.insert(partnerPlates).values([
+      {
+        partnerId: partnerAId,
+        plateNumber: 'G 7771 KA',
+        plateNumberNorm: 'G7771KA',
+        vehicleType: 'Premium - Innova',
+      },
+      { partnerId: partnerBId, plateNumber: 'G 7772 KB', plateNumberNorm: 'G7772KB' },
     ]);
 
     const [target] = await db
@@ -246,6 +284,8 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     await db.delete(fleetTargets).where(inArray(fleetTargets.id, cleanupTargetIds));
     await db.delete(grabTargets).where(eq(grabTargets.plateNumber, 'B5678ZZ'));
     await db.delete(fleetExceptions).where(eq(fleetExceptions.vehiclePlate, 'G7771KA'));
+    // cascades to partner_plates
+    await db.delete(partners).where(inArray(partners.id, [partnerAId, partnerBId]));
     await db.delete(users).where(eq(users.id, adminId));
     await app.close();
   });
@@ -389,15 +429,38 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     await agent.delete(`/admin/fleet/gojek/exceptions/${id}`).expect(200);
   });
 
-  it('presents the unplated manual row with a blank plateRaw + detailId (HTTP)', async () => {
+  it('scopes the admin grid to the union of every partner’s registered plates (HTTP)', async () => {
     const res = await agent.get(`/admin/fleet/gojek/grid?month=${MONTH}&year=${YEAR}`).expect(200);
-    const manual = res.body.data.rows.find((r: { plateNorm: string }) =>
-      r.plateNorm.startsWith('manual_'),
-    );
-    expect(manual).toBeDefined();
-    expect(manual.plateRaw).toBe(''); // blank → FE shows a "Tanpa Plat" badge
-    expect(manual.detailId).toBeGreaterThan(0);
-    expect(manual.carId).toBeNull();
+    const norms = res.body.data.rows.map((r: { plateNorm: string }) => r.plateNorm);
+    // one plate registered by partner A, the other by partner B
+    expect(norms).toContain('G7771KA');
+    expect(norms).toContain('G7772KB');
+    // registered by no partner -> hidden, incl. unplated manual_<id> rows
+    expect(norms).not.toContain('G7773KC');
+    expect(norms.some((n: string) => n.startsWith('manual_'))).toBe(false);
+    // the Type entered in Daftarkan Plat surfaces when no fleet target set one
+    const rowA = res.body.data.rows.find((r: { plateNorm: string }) => r.plateNorm === 'G7771KA');
+    expect(rowA.vehicleType).toBe('Premium - Innova');
+  });
+
+  it('admin summary counts only the plates visible in the scoped table (HTTP)', async () => {
+    const res = await agent
+      .get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}`)
+      .expect(200);
+    // G7771KA (980000) + G7772KB (300000); G7773KC (250000) and the unplated
+    // manual payment (75000) are outside the table, so outside the summary too
+    expect(res.body.data.globalSummary.totalDeduction).toBe(1_280_000);
+  });
+
+  it('admin cell 404s for a plate no partner registered (HTTP)', async () => {
+    await agent
+      .get(`/admin/fleet/gojek/cell?month=${MONTH}&year=${YEAR}&plate=G7773KC&day=12`)
+      .expect(404);
+    // registered plates keep serving the breakdown modal
+    const res = await agent
+      .get(`/admin/fleet/gojek/cell?month=${MONTH}&year=${YEAR}&plate=G7771KA&day=7`)
+      .expect(200);
+    expect(res.body.data.displayTotal).toBe(50000);
   });
 
   it('GET /details/:detailId prefills the manual-payment detail', async () => {
@@ -435,5 +498,10 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     const merged = after.rows.find((r) => r.key === 'B8888MP');
     expect(merged).toBeDefined();
     expect(merged!.dailyData[8]).toBe(75000); // the manual amount, now on its plate
+
+    // B8888MP is registered by no partner, so the admin surface still hides it
+    const http = await agent.get(`/admin/fleet/gojek/grid?month=${MONTH}&year=${YEAR}`).expect(200);
+    const norms = http.body.data.rows.map((r: { plateNorm: string }) => r.plateNorm);
+    expect(norms).not.toContain('B8888MP');
   });
 });
