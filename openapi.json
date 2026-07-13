@@ -2254,6 +2254,221 @@
         ]
       }
     },
+    "/partner/portal/debt-summary": {
+      "get": {
+        "operationId": "PortalDebtController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 10,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "aktif",
+                "nonaktif"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "cabang",
+            "required": false,
+            "in": "query",
+            "description": "Exact cabang from /debt-summary/filters",
+            "schema": {}
+          },
+          {
+            "name": "koordinator",
+            "required": false,
+            "in": "query",
+            "description": "Exact koordinator from /debt-summary/filters",
+            "schema": {}
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Substring on driver name or plate",
+            "schema": {}
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "driverName",
+                "cabang",
+                "koordinator",
+                "depositTerbayar",
+                "tagihanSetoran",
+                "totalTagihan",
+                "selisihDeposit"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Own debt summary per driver (scoped to registered plates)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/debt-summary/filters": {
+      "get": {
+        "operationId": "PortalDebtController_filters",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Dropdown options (cabang, koordinator) for the debt summary",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/debt-summary/export": {
+      "get": {
+        "operationId": "PortalDebtController_export",
+        "parameters": [
+          {
+            "name": "format",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "xlsx"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "aktif",
+                "nonaktif"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "cabang",
+            "required": false,
+            "in": "query",
+            "description": "Exact cabang from /debt-summary/filters",
+            "schema": {}
+          },
+          {
+            "name": "koordinator",
+            "required": false,
+            "in": "query",
+            "description": "Exact koordinator from /debt-summary/filters",
+            "schema": {}
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Substring on driver name or plate",
+            "schema": {}
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "driverName",
+                "cabang",
+                "koordinator",
+                "depositTerbayar",
+                "tagihanSetoran",
+                "totalTagihan",
+                "selisihDeposit"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Export the filtered debt summary (?format=xlsx)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
     "/partner/portal/rentals/cogs-defaults": {
       "get": {
         "operationId": "PartnerRentalsController_listCogsDefaults",
