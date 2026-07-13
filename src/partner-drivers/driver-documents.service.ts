@@ -13,10 +13,6 @@ import {
 } from './driver.constants';
 import { PresignDriverDocumentDto } from './dto/presign-driver-document.dto';
 
-type Database = DatabaseService['db'];
-/** The transaction handle Drizzle passes to `db.transaction(cb)` — same query API. */
-type Executor = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
-
 /**
  * Driver document storage (KTP/SIM/SKCK scans, deposit proofs), presign →
  * PUT → confirm like checkpoint media. Every document kind is
@@ -136,9 +132,6 @@ export class DriverDocumentsService {
           ),
         )
         .returning({ storageKey: driverDocuments.storageKey });
-      if (stale.length > 0) {
-        await this.resetDerivedState(tx, driverId, doc.kind, 'replace');
-      }
       return stale.map((s) => s.storageKey);
     });
     await Promise.all(staleKeys.map((key) => this.storage.delete(key)));
@@ -157,43 +150,15 @@ export class DriverDocumentsService {
       .where(and(eq(driverDocuments.id, documentId), eq(driverDocuments.driverId, driverId)))
       .returning({ storageKey: driverDocuments.storageKey, kind: driverDocuments.kind });
     if (!row) throw new NotFoundException('Dokumen tidak ditemukan');
-    await this.resetDerivedState(this.database.db, driverId, row.kind, 'delete');
+    // Deleting the deposit-return evidence invalidates the returned state.
+    if (row.kind === 'deposit_return_proof') {
+      await this.database.db
+        .update(drivers)
+        .set({ depositReturnStatus: 'none', depositReturnDecidedAt: null, updatedAt: new Date() })
+        .where(eq(drivers.id, driverId));
+    }
     await this.storage.delete(row.storageKey);
     return { deleted: true };
-  }
-
-  /**
-   * A deleted or replaced document invalidates the driver state derived from
-   * it (doc-check flags, deposit decisions). One exception: replacing the
-   * deposit proof on an already-approved driver keeps depositStatus — that
-   * deposit was consumed by the registration approval; a delete still resets.
-   */
-  private async resetDerivedState(
-    ex: Executor,
-    driverId: number,
-    kind: string,
-    event: 'delete' | 'replace',
-  ): Promise<void> {
-    let patch: Partial<typeof drivers.$inferInsert>;
-    if (kind === 'ktp') patch = { ktpVerified: false };
-    else if (kind === 'sim') patch = { simVerified: false };
-    else if (kind === 'skck') patch = { skckVerified: false };
-    else if (kind === 'deposit_proof') {
-      if (event === 'replace') {
-        const [row] = await ex
-          .select({ registrationStatus: drivers.registrationStatus })
-          .from(drivers)
-          .where(eq(drivers.id, driverId));
-        if (row?.registrationStatus === 'approved') return;
-      }
-      patch = { depositStatus: 'none', depositNote: null, depositDecidedAt: null };
-    } else if (kind === 'deposit_return_proof') {
-      patch = { depositReturnStatus: 'none', depositReturnDecidedAt: null };
-    } else return;
-    await ex
-      .update(drivers)
-      .set({ ...patch, updatedAt: new Date() })
-      .where(eq(drivers.id, driverId));
   }
 
   /** Loads one document row and its bytes for the dev file GET endpoint. */
@@ -229,15 +194,6 @@ export class DriverDocumentsService {
       )
       .limit(1);
     return !!row;
-  }
-
-  /** Best-effort storage cleanup before a driver row (and its docs) is hard-deleted. */
-  async deleteStorageForDriver(driverId: number): Promise<void> {
-    const rows = await this.database.db
-      .select({ storageKey: driverDocuments.storageKey })
-      .from(driverDocuments)
-      .where(eq(driverDocuments.driverId, driverId));
-    await Promise.all(rows.map((r) => this.storage.delete(r.storageKey)));
   }
 
   private async view(row: DriverDocumentRow): Promise<DriverDocumentView> {
