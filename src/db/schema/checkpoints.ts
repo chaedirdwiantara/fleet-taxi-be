@@ -29,9 +29,8 @@ export const checkpoints = pgTable(
     partnerId: bigint('partner_id', { mode: 'number' })
       .notNull()
       .references(() => partners.id, { onDelete: 'cascade' }),
-    createdBy: bigint('created_by', { mode: 'number' })
-      .notNull()
-      .references(() => users.id),
+    // Nullable: account deletion nulls this so inspection history survives.
+    createdBy: bigint('created_by', { mode: 'number' }).references(() => users.id),
     plateNumber: text('plate_number').notNull(), // display, as entered
     plateNumberNorm: text('plate_number_norm').notNull(), // normalized [A-Z0-9]
     // delivery_to_customer | return_from_customer | delivery_to_driver | return_from_driver

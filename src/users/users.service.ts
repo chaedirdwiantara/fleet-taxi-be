@@ -4,10 +4,19 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, count, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
 import { hashPassword } from '../auth/password';
 import { DatabaseService } from '../db/database.service';
-import { fleetImports, grabImports, partners, roles, userRoles, users } from '../db/schema';
+import {
+  checkpoints,
+  fleetImports,
+  grabImports,
+  partnerPlates,
+  partners,
+  roles,
+  userRoles,
+  users,
+} from '../db/schema';
 
 export interface UserWithRoles {
   id: number;
@@ -186,15 +195,22 @@ export class UsersService {
 
   /**
    * Hard-deletes an account. Refuses self-deletion and deleting the last active
-   * super_admin. Import history is preserved by nulling its `imported_by` (the
-   * FK has no cascade), then the user + its role rows (cascade) are removed.
+   * super_admin. Import + checkpoint history is preserved by nulling the
+   * `imported_by`/`created_by` FKs (no cascade), then the user + its role rows
+   * (cascade) are removed. When the account is a partner's LAST portal user,
+   * that partner's plate registrations are dropped too, so the admin fleet
+   * grid's Rental Partner label (partner_plates ⋈ partners) re-syncs instead
+   * of staying attributed to the deleted account's partner.
    */
   async deleteUser(actingUserId: number, id: number): Promise<{ deleted: true }> {
     if (actingUserId === id) {
       throw new BadRequestException('Tidak bisa menghapus akun sendiri');
     }
     const db = this.database.db;
-    const [target] = await db.select({ id: users.id }).from(users).where(eq(users.id, id));
+    const [target] = await db
+      .select({ id: users.id, partnerId: users.partnerId })
+      .from(users)
+      .where(eq(users.id, id));
     if (!target) throw new NotFoundException('User not found');
 
     const supers = await this.activeSuperAdminIds();
@@ -208,6 +224,18 @@ export class UsersService {
         .set({ importedBy: null })
         .where(eq(fleetImports.importedBy, id));
       await tx.update(grabImports).set({ importedBy: null }).where(eq(grabImports.importedBy, id));
+      await tx.update(checkpoints).set({ createdBy: null }).where(eq(checkpoints.createdBy, id));
+
+      if (target.partnerId != null) {
+        const [remaining] = await tx
+          .select({ value: count() })
+          .from(users)
+          .where(and(eq(users.partnerId, target.partnerId), ne(users.id, id)));
+        if ((remaining?.value ?? 0) === 0) {
+          await tx.delete(partnerPlates).where(eq(partnerPlates.partnerId, target.partnerId));
+        }
+      }
+
       await tx.delete(users).where(eq(users.id, id)); // user_roles cascade
     });
     return { deleted: true };

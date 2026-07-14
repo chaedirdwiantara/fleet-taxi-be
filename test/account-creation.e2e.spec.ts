@@ -14,7 +14,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { ApiKeyGuard } from '../src/common/guards/api-key.guard';
 import { DatabaseService } from '../src/db/database.service';
-import { partners, roles, userRoles, users } from '../src/db/schema';
+import { checkpoints, partnerPlates, partners, roles, userRoles, users } from '../src/db/schema';
 import { PartnersModule } from '../src/partners/partners.module';
 
 const RUN = `acct${Date.now()}`;
@@ -247,6 +247,51 @@ describe('account creation (super_admin only)', () => {
   it('refuses self-deletion', async () => {
     const me = await superAgent.get('/admin/auth/me').expect(200);
     await superAgent.delete(`/admin/users/${me.body.data.id}`).expect(400);
+  });
+
+  it('deletes a partner user with checkpoints, preserving history and dropping its plate registrations', async () => {
+    const db = database.db;
+    const [partner] = await db
+      .insert(partners)
+      .values({ code: `${RUN}DELP`, name: 'Delete Sync Partner' })
+      .returning();
+
+    const created = await superAgent
+      .post(`/admin/partners/${partner!.id}/users`)
+      .send({ email: `${RUN}-delsync@test.example`, fullName: 'Del Sync', password: 'password123' })
+      .expect(201);
+    const userId = created.body.data.id as number;
+
+    const [cp] = await db
+      .insert(checkpoints)
+      .values({
+        partnerId: partner!.id,
+        createdBy: userId,
+        plateNumber: 'B 1 DEL',
+        plateNumberNorm: 'B1DEL',
+        handoverType: 'delivery_to_driver',
+      })
+      .returning();
+    await db.insert(partnerPlates).values({
+      partnerId: partner!.id,
+      plateNumber: 'B 1 DEL',
+      plateNumberNorm: 'B1DEL',
+    });
+
+    // last account of the partner → checkpoint kept (created_by nulled), plates dropped
+    await superAgent.delete(`/admin/users/${userId}`).expect(200);
+
+    const [cpAfter] = await db.select().from(checkpoints).where(eq(checkpoints.id, cp!.id));
+    expect(cpAfter).toBeDefined();
+    expect(cpAfter!.createdBy).toBeNull();
+
+    const plates = await db
+      .select()
+      .from(partnerPlates)
+      .where(eq(partnerPlates.partnerId, partner!.id));
+    expect(plates).toHaveLength(0);
+
+    await db.delete(partners).where(eq(partners.id, partner!.id)); // cascades checkpoint
   });
 
   // ---- first-login change-password --------------------------------------
