@@ -8,6 +8,7 @@ import { encodeDueSegments } from './due-segments';
 import {
   DEFAULT_DAILY_TARGET,
   DailyDetailBucket,
+  ExitedDriver,
   GojekGridResult,
   GojekPerformer,
   GojekVehicleRow,
@@ -403,6 +404,8 @@ export class GojekGridService {
       totalOutstanding,
       outstandingDriverKeluar: exitStats.outstandingDriverKeluar,
       exitedCount: exitStats.exitedCount,
+      exitedDrivers: exitStats.exitedDrivers,
+      lastImportDate: exitStats.lastImportDate,
       availableRentalPartners,
       availablePlates,
       topPerformers,
@@ -426,6 +429,8 @@ export class GojekGridService {
       totalOutstanding: 0,
       outstandingDriverKeluar: 0,
       exitedCount: 0,
+      exitedDrivers: [],
+      lastImportDate: null,
       availableRentalPartners: [NO_RENTAL_PARTNER],
       availablePlates: [],
       topPerformers: [],
@@ -510,14 +515,25 @@ export class GojekGridService {
    * The balance is the plate's ALL-TIME due − paid (deduction + manual payment,
    * regardless of the counted flag — an exited driver's debt is a "now" fact),
    * skipping bebas-setoran exception days. exitedCount counts only plates whose
-   * balance is non-zero, matching the legacy card.
+   * balance is non-zero, matching the legacy card. exitedDrivers is the card's
+   * click-through detail: one row per exited plate that still carries a
+   * balance (driver name taken from the plate's last import rows), sorted by
+   * outstanding descending like the legacy modal.
    */
   private async fetchExitStats(scopePlates?: string[]): Promise<{
     exitedByPlate: Map<string, { lastSeen: string; outstanding: number }>;
     outstandingDriverKeluar: number;
     exitedCount: number;
+    exitedDrivers: ExitedDriver[];
+    lastImportDate: string | null; // newest transaction date anywhere (modal subtitle)
   }> {
-    const empty = { exitedByPlate: new Map(), outstandingDriverKeluar: 0, exitedCount: 0 };
+    const empty = {
+      exitedByPlate: new Map(),
+      outstandingDriverKeluar: 0,
+      exitedCount: 0,
+      exitedDrivers: [],
+      lastImportDate: null,
+    };
     if (scopePlates !== undefined && scopePlates.length === 0) return empty;
 
     const scopeFilter = scopePlates?.length
@@ -537,13 +553,14 @@ export class GojekGridService {
       GROUP BY vehicle_plate_norm
     `)) as unknown as Array<{ plate: string; last_seen: string; global_last: string }>;
 
+    const lastImportDate = lastSeenRows[0]?.global_last ?? null;
     const exitedByPlate = new Map<string, { lastSeen: string; outstanding: number }>();
     for (const row of lastSeenRows) {
       if (row.last_seen < row.global_last) {
         exitedByPlate.set(row.plate, { lastSeen: row.last_seen, outstanding: 0 });
       }
     }
-    if (!exitedByPlate.size) return empty;
+    if (!exitedByPlate.size) return { ...empty, lastImportDate };
 
     const balanceRows = (await this.database.db.execute(sql`
       SELECT
@@ -576,7 +593,32 @@ export class GojekGridService {
       outstandingDriverKeluar += outstanding;
       if (outstanding !== 0) exitedCount++;
     }
-    return { exitedByPlate, outstandingDriverKeluar, exitedCount };
+
+    // Newest row per exited plate → the driver name it left with.
+    const nameRows = (await this.database.db.execute(sql`
+      SELECT DISTINCT ON (vehicle_plate_norm)
+        vehicle_plate_norm AS plate,
+        driver_name
+      FROM fleet_import_details
+      WHERE vehicle_plate_norm IN (${sql.join(
+        [...exitedByPlate.keys()].map((p) => sql`${p}`),
+        sql`, `,
+      )})
+      ORDER BY vehicle_plate_norm, transaction_date DESC, id DESC
+    `)) as unknown as Array<{ plate: string; driver_name: string | null }>;
+    const nameByPlate = new Map(nameRows.map((r) => [r.plate, r.driver_name]));
+
+    const exitedDrivers = [...exitedByPlate.entries()]
+      .filter(([, e]) => e.outstanding !== 0)
+      .map(([plate, e]) => ({
+        driverName: (nameByPlate.get(plate) ?? '').trim().toUpperCase() || 'Unknown Driver',
+        plate,
+        lastSeen: e.lastSeen,
+        outstanding: e.outstanding,
+      }))
+      .sort((a, b) => b.outstanding - a.outstanding);
+
+    return { exitedByPlate, outstandingDriverKeluar, exitedCount, exitedDrivers, lastImportDate };
   }
 
   /** Same aggregation the legacy ran in SQL, keyed on vehicle_plate_norm. */

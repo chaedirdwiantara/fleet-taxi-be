@@ -122,6 +122,13 @@ export interface DriverActivityDto {
   selectedDayTotalDeduction: number;
   inactiveList: InactiveDriverDto[];
 }
+export interface ExitedDriverDto {
+  driverName: string;
+  plate: string;
+  lastSeen: string; // YYYY-MM-DD of the plate's last import row
+  outstanding: number;
+}
+
 export interface GojekSummaryDto {
   globalSummary: GlobalSummaryDto;
   driverActivity: DriverActivityDto;
@@ -129,6 +136,11 @@ export interface GojekSummaryDto {
   // Filter options for the dashboard's rental-partner select — computed over
   // the UNFILTERED grid so options don't disappear once a filter is applied.
   availableRentalPartners: string[];
+  // Click-through detail of the Outstanding Driver Keluar card: non-zero-
+  // balance exited plates, outstanding descending (legacy exitedDriversModal),
+  // plus the newest import date for the modal's "data terakhir" subtitle.
+  exitedDrivers: ExitedDriverDto[];
+  lastImportDate: string | null;
 }
 
 // ---- mappers ---------------------------------------------------------------
@@ -315,5 +327,7 @@ export function toGojekSummary(result: GojekGridResult, day?: number): GojekSumm
     driverActivity: toDriverActivity(result, day),
     charts: toCharts(result),
     availableRentalPartners: result.availableRentalPartners,
+    exitedDrivers: result.exitedDrivers,
+    lastImportDate: result.lastImportDate,
   };
 }

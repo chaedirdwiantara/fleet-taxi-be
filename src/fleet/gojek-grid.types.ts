@@ -57,6 +57,15 @@ export interface GojekVehicleRow {
   exitedLastSeen: string | null; // YYYY-MM-DD of the plate's last import row
 }
 
+// One exited plate with the driver it left with — the Outstanding Driver
+// Keluar card's click-through detail (legacy exitedDriversModal rows).
+export interface ExitedDriver {
+  driverName: string;
+  plate: string;
+  lastSeen: string; // YYYY-MM-DD of the plate's last import row
+  outstanding: number;
+}
+
 export interface GojekPerformer {
   driverName: string;
   vehicle: string; // comma-joined plates
@@ -78,6 +87,8 @@ export interface GojekGridResult {
   // outstanding total with totalOutstanding instead of double-counting it.
   outstandingDriverKeluar: number;
   exitedCount: number;
+  exitedDrivers: ExitedDriver[]; // non-zero-balance exited plates, desc by debt
+  lastImportDate: string | null; // newest transaction date in the data anywhere
   availableRentalPartners: string[];
   availablePlates: Array<{ plate: string; type: string }>;
   topPerformers: GojekPerformer[];
