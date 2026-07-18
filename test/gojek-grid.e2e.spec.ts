@@ -308,8 +308,12 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     // exception on day 5 ignored (money present); day 10 kept
     expect(row!.exceptions[10]).toBeDefined();
     expect(row!.exceptions[5]).toBeUndefined();
-    // outstanding = 475000 x 2 deduction-days - 980000 - 50000 = -80000
-    expect(row!.outstanding).toBe(-80000);
+    // cumulative outstanding = Σ due − Σ paid up to end of month, skipping
+    // bebas-setoran days entirely: 950000 − (400000 + 100000 + 50000) = 400000
+    // (the day-5 480000 deduction sits on a bebas-setoran day → not credited)
+    expect(row!.outstanding).toBe(400000);
+    // only month of data → the month delta equals the cumulative balance
+    expect(row!.outstandingMonth).toBe(400000);
     // daily cells
     expect(row!.dailyData[7]).toBe(50000); // display
     expect(row!.dailyCountedData[7]).toBe(0); // uncounted
@@ -329,18 +333,22 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     expect(row!.rentalPartner).toBe(`${RUN}-RENTAL`);
     // minDay 10 -> targetDays 22 -> 300000 x 22
     expect(row!.calculatedTarget).toBe(300000 * 22);
-    // outstanding = 300000 x 1 - 300000 - 0 = 0
-    expect(row!.outstanding).toBe(0);
+    // no due rows ever → cumulative outstanding = 0 − 300000 (overpaid credit)
+    expect(row!.outstanding).toBe(-300000);
+    expect(row!.outstandingMonth).toBe(-300000);
   });
 
-  it('separates unplated manual payments as synthetic manual_<id> rows', async () => {
+  it('diverts unplated manual payments into the rawRows queue (Data Mentah Tanpa Plat)', async () => {
     const grid = await gojek.buildGrid(MONTH, YEAR);
-    const row = grid.rows.find((r) => r.key.startsWith('manual_'));
-    expect(row).toBeDefined();
-    expect(row!.vehicle).toBe('');
-    expect(row!.detailId).toBeGreaterThan(0);
-    expect(row!.dailyTarget).toBe(488000); // fallback
-    expect(row!.outstanding).toBe(0); // no all-time stats for synthetic keys (legacy behavior)
+    // no synthetic manual_<id> rows in the pivot anymore
+    expect(grid.rows.some((r) => r.key.startsWith('manual_'))).toBe(false);
+    const raw = grid.rawRows.find((r) => r.driverName === 'NOPLAT');
+    expect(raw).toBeDefined();
+    expect(raw!.detailId).toBeGreaterThan(0);
+    expect(raw!.amount).toBe(75000);
+    expect(raw!.transactionDate).toBe(`${YEAR}-0${MONTH}-08`);
+    expect(raw!.isManualPaymentSetoran).toBe(1);
+    expect(grid.rawTotalAmount).toBeGreaterThanOrEqual(75000);
   });
 
   it('serves the cell-click breakdown', async () => {
@@ -473,6 +481,10 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     // registered by no partner -> hidden, incl. unplated manual_<id> rows
     expect(norms).not.toContain('G7773KC');
     expect(norms.some((n: string) => n.startsWith('manual_'))).toBe(false);
+    // ...but the unplated manual payment still reaches the admin processing
+    // queue (Data Mentah Tanpa Plat) even under the union scope
+    const raw = res.body.data.rawRows as Array<{ driverName: string; amount: number }>;
+    expect(raw.some((r) => r.driverName === 'NOPLAT' && r.amount === 75000)).toBe(true);
     // the Type entered in Daftarkan Plat surfaces when no fleet target set one
     const rowA = res.body.data.rows.find((r: { plateNorm: string }) => r.plateNorm === 'G7771KA');
     expect(rowA.vehicleType).toBe('Premium - Innova');
@@ -500,7 +512,7 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
 
   it('GET /details/:detailId prefills the manual-payment detail', async () => {
     const grid = await gojek.buildGrid(MONTH, YEAR);
-    const manual = grid.rows.find((r) => r.key.startsWith('manual_'))!;
+    const manual = grid.rawRows.find((r) => r.driverName === 'NOPLAT')!;
     const res = await agent
       .get(`/admin/fleet/gojek/details/${manual.detailId}?month=${MONTH}&year=${YEAR}`)
       .expect(200);
@@ -509,10 +521,10 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     expect(res.body.data.isManualPaymentSetoran).toBe(1);
   });
 
-  // MUTATING — keep last: it consumes the synthetic manual row for this fixture.
+  // MUTATING — keep last: it consumes the raw manual row for this fixture.
   it('POST /edit-driver assigns a plate to a manual row, merging it into that plate', async () => {
     const before = await gojek.buildGrid(MONTH, YEAR);
-    const manual = before.rows.find((r) => r.key.startsWith('manual_'))!;
+    const manual = before.rawRows.find((r) => r.driverName === 'NOPLAT')!;
 
     const res = await agent
       .post('/admin/fleet/gojek/edit-driver')
@@ -528,8 +540,8 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     expect(res.body.data.updated).toBe(1);
 
     const after = await gojek.buildGrid(MONTH, YEAR);
-    // the synthetic manual_<id> row is gone; the detail now lives under its plate
-    expect(after.rows.find((r) => r.key.startsWith('manual_'))).toBeUndefined();
+    // the raw queue entry is gone; the detail now lives under its plate
+    expect(after.rawRows.find((r) => r.detailId === manual.detailId)).toBeUndefined();
     const merged = after.rows.find((r) => r.key === 'B8888MP');
     expect(merged).toBeDefined();
     expect(merged!.dailyData[8]).toBe(75000); // the manual amount, now on its plate

@@ -22,6 +22,9 @@ export interface CellBreakdownItemDto {
   countedAmount: number;
   note: string | null;
   isDisplayOnly: boolean;
+  // Backing fleet_import_details ids — non-empty for Manual Payment items only,
+  // so the admin modal can open each one in the Edit form (re-toggle setoran).
+  detailIds: number[];
 }
 
 export interface CellBreakdownDto {
@@ -64,12 +67,32 @@ export interface FleetRowDto {
   dailyDue: Record<number, number>;
   dueSegments: DueSegment[];
   days: Record<number, DayCellValueDto>;
-  summary: { totalDeduction: number; calculatedTarget: number; gap: number; outstanding: number };
+  summary: {
+    totalDeduction: number;
+    calculatedTarget: number;
+    gap: number;
+    // Cumulative balance (Σ due − Σ paid) from the plate's first imported row
+    // up to the END of the selected month; outstandingMonth is that month's
+    // own delta (outstanding = previous-month outstanding + outstandingMonth).
+    outstanding: number;
+    outstandingMonth: number;
+  };
   driverHistory: string[];
   // Driver keluar: plate no longer appears in the newest import (auto-clears
   // when it reappears). exitedLastSeen = last import date it was seen (YYYY-MM-DD).
   isExited: boolean;
   exitedLastSeen: string | null;
+}
+
+// "Data Mentah Tanpa Plat": an unprocessed Manual Payment row imported without
+// a plate. Excluded from rows/totals until an admin processes it (edit-driver).
+export interface RawManualRowDto {
+  detailId: number;
+  transactionDate: string; // YYYY-MM-DD
+  driverName: string;
+  amount: number;
+  isManualPaymentSetoran: number | null;
+  note: string | null;
 }
 
 export interface FleetGridDto {
@@ -78,7 +101,15 @@ export interface FleetGridDto {
   daysInMonth: number;
   rows: FleetRowDto[];
   dailyTotals: Record<number, number>;
-  tableTotals: { totalDeduction: number; totalDue: number; outstanding: number };
+  tableTotals: {
+    totalDeduction: number;
+    totalDue: number;
+    outstanding: number;
+    outstandingMonth: number;
+  };
+  // Admin processing queue — always empty under partner scoping.
+  rawRows: RawManualRowDto[];
+  rawTotalAmount: number;
   availableRentalPartners: string[];
   availablePlates: { plate: string; type: string }[];
 }
@@ -98,7 +129,8 @@ export interface PerformersDto {
 export interface GlobalSummaryDto {
   totalDeduction: number;
   totalDue: number;
-  totalOutstanding: number; // active (non-exited) plates only
+  totalOutstanding: number; // active plates only — cumulative up to the selected month
+  totalOutstandingMonth: number; // active plates only — the selected month's delta
   // Card "Outstanding Driver Keluar": all-time balance of plates that stopped
   // appearing in imports, and how many of them still owe (non-zero balance).
   outstandingDriverKeluar: number;
@@ -162,6 +194,7 @@ export function toCellBreakdown(
       countedAmount: i.countedAmount,
       note: i.note === '' ? null : i.note,
       isDisplayOnly: i.isDisplayOnly,
+      detailIds: i.detailIds,
     })),
   };
 }
@@ -224,6 +257,7 @@ function toFleetRow(row: GojekVehicleRow): FleetRowDto {
       calculatedTarget: row.calculatedTarget,
       gap: row.totalDeduction - row.calculatedTarget,
       outstanding: row.outstanding,
+      outstandingMonth: row.outstandingMonth,
     },
     driverHistory: row.driverHistory,
     isExited: row.isExited,
@@ -242,7 +276,17 @@ export function toFleetGrid(result: GojekGridResult): FleetGridDto {
       totalDeduction: result.totalDeduction,
       totalDue: result.totalCalculatedTarget,
       outstanding: result.totalOutstanding,
+      outstandingMonth: result.totalOutstandingMonth,
     },
+    rawRows: result.rawRows.map((r) => ({
+      detailId: r.detailId,
+      transactionDate: r.transactionDate,
+      driverName: r.driverName,
+      amount: r.amount,
+      isManualPaymentSetoran: r.isManualPaymentSetoran,
+      note: r.note,
+    })),
+    rawTotalAmount: result.rawTotalAmount,
     availableRentalPartners: result.availableRentalPartners,
     availablePlates: result.availablePlates,
   };
@@ -269,6 +313,7 @@ function toGlobalSummary(result: GojekGridResult): GlobalSummaryDto {
     totalDeduction: result.totalDeduction,
     totalDue: result.totalCalculatedTarget,
     totalOutstanding: result.totalOutstanding,
+    totalOutstandingMonth: result.totalOutstandingMonth,
     outstandingDriverKeluar: result.outstandingDriverKeluar,
     exitedCount: result.exitedCount,
   };
