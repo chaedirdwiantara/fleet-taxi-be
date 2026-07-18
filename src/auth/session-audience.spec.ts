@@ -33,7 +33,9 @@ describe('resolveSessionUser (absolute session cap)', () => {
   });
 
   it('treats a legacy slot without loginAt as expired', () => {
-    const session: Partial<SessionData> = { partnerUser: user({ roles: ['partner'], partnerId: 7 }) };
+    const session: Partial<SessionData> = {
+      partnerUser: user({ roles: ['partner'], partnerId: 7 }),
+    };
     expect(resolveSessionUser('/partner/portal/me', session)).toBeUndefined();
     expect(session.partnerUser).toBeUndefined();
   });

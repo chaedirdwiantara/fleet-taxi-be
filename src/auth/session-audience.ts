@@ -16,10 +16,7 @@ export function audienceOfPath(path: string): Audience | 'shared' {
  * than SESSION_ABSOLUTE_MAX_MS (or predating the cap — no loginAt recorded)
  * is evicted from the session and treated as unauthenticated.
  */
-function liveSlotUser(
-  session: Partial<SessionData>,
-  audience: Audience,
-): SessionUser | undefined {
+function liveSlotUser(session: Partial<SessionData>, audience: Audience): SessionUser | undefined {
   const userKey = audience === 'admin' ? 'adminUser' : 'partnerUser';
   const loginAtKey = audience === 'admin' ? 'adminLoginAt' : 'partnerLoginAt';
   const user = session[userKey];

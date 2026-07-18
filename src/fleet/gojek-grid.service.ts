@@ -12,6 +12,7 @@ import {
   GojekVehicleRow,
   NO_RENTAL_PARTNER,
 } from './gojek-grid.types';
+import { fetchRegisteredPartnerNames } from './registered-partner-names';
 
 /**
  * Faithful port of legacy AdminFleetMonitoringController::getIndex.
@@ -195,8 +196,12 @@ export class GojekGridService {
       });
     }
 
-    const allTimeMap = await this.fetchAllTimeStats([
+    const pivotPlates = [
       ...new Set([...pivot.values()].map((v) => v.vehicle).filter((p) => p !== '')),
+    ];
+    const [allTimeMap, registeredPartnerNames] = await Promise.all([
+      this.fetchAllTimeStats(pivotPlates),
+      fetchRegisteredPartnerNames(this.database, pivotPlates),
     ]);
 
     const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -223,6 +228,11 @@ export class GojekGridService {
           }
         }
       }
+
+      // A plate registered by a live partner account (Daftarkan Plat) shows that
+      // account's name — the target's free-text rental_partner is only a fallback.
+      const registeredName = registeredPartnerNames.get(plateClean);
+      if (registeredName) v.rentalPartner = registeredName;
 
       let dailyTarget =
         manualTarget > 0
