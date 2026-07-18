@@ -401,6 +401,18 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     expect(grid.exitedCount).toBe(1);
     // the exited row's outstanding leaves the main total (cards partition it)
     expect(grid.totalOutstanding).toBe(0);
+    // newest import date anywhere (>= this spec's own fixture max; the shared
+    // test DB may contain later dates from other suites)
+    expect(grid.lastImportDate! >= `${YEAR}-0${MONTH}-10`).toBe(true);
+    // click-through list: driver name from the plate's newest import row
+    expect(grid.exitedDrivers).toEqual([
+      {
+        driverName: 'BUDI',
+        plate: 'G7771KA',
+        lastSeen: `${YEAR}-0${MONTH}-07`,
+        outstanding: 400000,
+      },
+    ]);
   });
 
   it('builds the Grab composite-key pivot with summed summary columns', async () => {
