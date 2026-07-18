@@ -37,6 +37,9 @@ export class AdminFleetService {
       ...filters,
       scopePlates: norms,
       partnerNameByNorm,
+      // the "Data Mentah Tanpa Plat" processing queue is an admin concern —
+      // unplated rows can never belong to a partner's scope
+      includeRawManual: true,
     });
     const dto = toFleetGrid(result);
     // Surface the Type entered in Daftarkan Plat when the grid has none (no
