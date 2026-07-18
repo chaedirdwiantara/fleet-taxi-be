@@ -40,10 +40,14 @@ export class AuthController {
     }
     // Regenerate to prevent session fixation, but carry any coexisting partner
     // session across so an admin login doesn't log the partner out.
-    const partnerUser = req.session.partnerUser;
+    const { partnerUser, partnerLoginAt } = req.session;
     await regenerateSession(req);
-    if (partnerUser) req.session.partnerUser = partnerUser;
+    if (partnerUser) {
+      req.session.partnerUser = partnerUser;
+      req.session.partnerLoginAt = partnerLoginAt;
+    }
     req.session.adminUser = user;
+    req.session.adminLoginAt = Date.now();
     return user;
   }
 
@@ -54,6 +58,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Log out of the admin audience (keeps a partner session)' })
   async logout(@Req() req: Request): Promise<{ loggedOut: true }> {
     delete req.session.adminUser;
+    delete req.session.adminLoginAt;
     // Only tear the whole session down if no partner session remains.
     if (req.session.partnerUser) {
       await saveSession(req);

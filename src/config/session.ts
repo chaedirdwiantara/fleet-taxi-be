@@ -4,7 +4,12 @@ import session from 'express-session';
 import type Redis from 'ioredis';
 import { Env } from './env';
 
-const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// Idle timeout: the cookie (and Redis TTL) slides forward on every request
+// (`rolling: true`); 2h of inactivity ends the session.
+export const SESSION_IDLE_MS = 2 * 60 * 60 * 1000;
+// Absolute cap: a login is never valid longer than 12h regardless of activity.
+// Enforced per audience slot in auth/session-audience.ts (rolling cookies can't).
+export const SESSION_ABSOLUTE_MAX_MS = 12 * 60 * 60 * 1000;
 
 /**
  * Builds the Redis-backed session middleware. Shared by the HTTP pipeline
@@ -22,13 +27,14 @@ export function buildSessionMiddleware(
     secret: env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
+    rolling: true,
     cookie: {
       httpOnly: true,
       secure: isProd,
       // cross-subdomain app. <-> api. needs SameSite=None in prod
       sameSite: isProd ? 'none' : 'lax',
       domain: env.COOKIE_DOMAIN === 'localhost' ? undefined : env.COOKIE_DOMAIN,
-      maxAge: SESSION_MAX_AGE_MS,
+      maxAge: SESSION_IDLE_MS,
     },
   });
 }
