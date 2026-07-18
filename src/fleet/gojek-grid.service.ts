@@ -12,13 +12,14 @@ import {
   GojekPerformer,
   GojekVehicleRow,
   NO_RENTAL_PARTNER,
+  RawManualRow,
 } from './gojek-grid.types';
 
 /**
- * Faithful port of legacy AdminFleetMonitoringController::getIndex.
+ * Faithful port of legacy AdminFleetMonitoringController::buildMonitoringData.
  * The monthly pivot runs in TypeScript exactly like the legacy PHP loop
- * (≤ ~500 vehicles × 31 days per month — small); the all-time outstanding
- * aggregation is the same SQL the legacy used, keyed on vehicle_plate_norm.
+ * (≤ ~500 vehicles × 31 days per month — small); the cumulative outstanding
+ * window (fetchCumulativeStats) is one SQL aggregate keyed on vehicle_plate_norm.
  */
 @Injectable()
 export class GojekGridService {
@@ -60,6 +61,10 @@ export class GojekGridService {
       // When present it is the authoritative Rental Partner label — the legacy
       // fleet_targets.rental_partner string only fills unregistered plates.
       partnerNameByNorm?: Map<string, string>;
+      // Admin surface only: let unplated Manual Payment rows through the plate
+      // scope so they land in the rawRows queue ("Data Mentah Tanpa Plat").
+      // NEVER set for partner scoping — a partner must not see unplated data.
+      includeRawManual?: boolean;
     } = {},
   ): Promise<GojekGridResult> {
     const { db } = this.database;
@@ -81,25 +86,46 @@ export class GojekGridService {
             ilike(fleetImportDetails.type, '%manual payment%'),
           ),
           filters.scopePlates?.length
-            ? inArray(fleetImportDetails.vehiclePlateNorm, filters.scopePlates)
+            ? filters.includeRawManual
+              ? or(
+                  inArray(fleetImportDetails.vehiclePlateNorm, filters.scopePlates),
+                  and(
+                    eq(fleetImportDetails.vehiclePlateNorm, ''),
+                    ilike(fleetImportDetails.type, '%manual payment%'),
+                  ),
+                )
+              : inArray(fleetImportDetails.vehiclePlateNorm, filters.scopePlates)
             : undefined,
         ),
       );
 
     // ── pivot (legacy grouping loop) ─────────────────────────────────────
     const pivot = new Map<string, GojekVehicleRow & { maxDay: number }>();
+    // "Data Mentah Tanpa Plat" queue: unplated manual payments stay OUT of the
+    // pivot (and every total) until an admin assigns them a plate.
+    const rawManualRows: RawManualRow[] = [];
 
     for (const row of rawRows) {
       const day = Number(row.transactionDate.slice(8, 10));
       const isManual = this.isManualPaymentType(row.type);
-      let plateKey = row.vehiclePlateNorm ?? normalizePlate(row.vehiclePlate);
-      if (!plateKey && isManual) plateKey = `manual_${row.id}`;
+      const plateKey = row.vehiclePlateNorm ?? normalizePlate(row.vehiclePlate);
+      if (!plateKey && isManual) {
+        rawManualRows.push({
+          detailId: row.id,
+          transactionDate: row.transactionDate,
+          driverName: (row.driverName ?? '').trim(),
+          amount: Math.abs(row.amount ?? 0),
+          isManualPaymentSetoran: row.isManualPaymentSetoran,
+          note: row.manualPaymentNote,
+        });
+        continue;
+      }
 
       let v = pivot.get(plateKey);
       if (!v) {
         v = {
           key: plateKey,
-          detailId: plateKey.startsWith('manual_') ? row.id : null,
+          detailId: null, // synthetic manual_ rows now live in rawRows, not the pivot
           driverName: (row.driverName ?? '').toUpperCase(),
           driverHistory: [],
           vehicle: row.vehiclePlateNorm ?? normalizePlate(row.vehiclePlate),
@@ -128,6 +154,7 @@ export class GojekGridService {
           minDay: 31,
           maxDay: 1,
           outstanding: 0,
+          outstandingMonth: 0,
           isExited: false,
           exitedLastSeen: null,
         };
@@ -168,7 +195,16 @@ export class GojekGridService {
         }
 
         const note = !counted && row.manualPaymentNote ? row.manualPaymentNote : '';
-        this.addBreakdownItem(v, day, label, val, countedVal, isManual && !counted, note);
+        this.addBreakdownItem(
+          v,
+          day,
+          label,
+          val,
+          countedVal,
+          isManual && !counted,
+          note,
+          isManual ? row.id : null,
+        );
 
         if (isManual) {
           if (!v.manualPaymentDays.includes(day)) v.manualPaymentDays.push(day);
@@ -239,8 +275,8 @@ export class GojekGridService {
     const pivotPlates = [
       ...new Set([...pivot.values()].map((v) => v.vehicle).filter((p) => p !== '')),
     ];
-    const [allTimeMap, exitStats] = await Promise.all([
-      this.fetchAllTimeStats(pivotPlates),
+    const [cumulativeMap, exitStats] = await Promise.all([
+      this.fetchCumulativeStats(pivotPlates, month, year),
       this.fetchExitStats(filters.scopePlates),
     ]);
 
@@ -311,12 +347,14 @@ export class GojekGridService {
       v.activeDays = activeDays;
       v.minDay = minDay;
 
-      // legacy: all-time stats looked up by the pivot key (manual_ keys miss → zeros)
-      const at = allTimeMap.get(key);
-      const allTimeDays = at?.allTimeDays ?? 0;
-      const allTimeDeduction = at?.allTimeDeduction ?? 0;
-      const allTimeManualUncounted = at?.allTimeManualUncounted ?? 0;
-      v.outstanding = dailyTarget * allTimeDays - allTimeDeduction - allTimeManualUncounted;
+      // Outstanding = running balance (Σ due − Σ paid) from the plate's first
+      // imported row up to the end of the SELECTED month; outstandingMonth is
+      // the selected month's own slice of that window. Both counted and
+      // uncounted manual payments settle the debt (the setoran flag only
+      // controls whether the money counts toward the month's omset).
+      const cum = cumulativeMap.get(key);
+      v.outstanding = (cum?.cumulativeTarget ?? 0) - (cum?.cumulativePaid ?? 0);
+      v.outstandingMonth = (cum?.monthTarget ?? 0) - (cum?.monthPaid ?? 0);
 
       const exit = exitStats.exitedByPlate.get(plateClean);
       if (exit) {
@@ -378,11 +416,15 @@ export class GojekGridService {
     let totalDeduction = 0;
     let totalCalculatedTarget = 0;
     let totalOutstanding = 0;
+    let totalOutstandingMonth = 0;
     for (const r of rows) {
       totalDeduction += r.totalDeduction;
       totalCalculatedTarget += r.calculatedTarget;
       // exited plates report under outstandingDriverKeluar, not the main total
-      if (!r.isExited) totalOutstanding += r.outstanding;
+      if (!r.isExited) {
+        totalOutstanding += r.outstanding;
+        totalOutstandingMonth += r.outstandingMonth;
+      }
       for (const [d, val] of Object.entries(r.dailyCountedData)) {
         dailyTotals[Number(d)] = (dailyTotals[Number(d)] ?? 0) + val;
       }
@@ -401,6 +443,11 @@ export class GojekGridService {
       totalDeduction,
       totalCalculatedTarget,
       totalOutstanding,
+      totalOutstandingMonth,
+      rawRows: rawManualRows.sort(
+        (a, b) => byteCompare(a.transactionDate, b.transactionDate) || a.detailId - b.detailId,
+      ),
+      rawTotalAmount: rawManualRows.reduce((sum, r) => sum + r.amount, 0),
       outstandingDriverKeluar: exitStats.outstandingDriverKeluar,
       exitedCount: exitStats.exitedCount,
       availableRentalPartners,
@@ -424,6 +471,9 @@ export class GojekGridService {
       totalDeduction: 0,
       totalCalculatedTarget: 0,
       totalOutstanding: 0,
+      totalOutstandingMonth: 0,
+      rawRows: [],
+      rawTotalAmount: 0,
       outstandingDriverKeluar: 0,
       exitedCount: 0,
       availableRentalPartners: [NO_RENTAL_PARTNER],
@@ -453,6 +503,7 @@ export class GojekGridService {
     countedAmount: number,
     isDisplayOnly: boolean,
     note: string,
+    detailId: number | null = null,
   ): void {
     const bucket = (v.dailyDetails[day] ??= {
       items: [],
@@ -462,12 +513,13 @@ export class GojekGridService {
     });
     let item = bucket.items.find((i) => i.label === label);
     if (!item) {
-      item = { label, displayAmount: 0, countedAmount: 0, isDisplayOnly, note: '' };
+      item = { label, displayAmount: 0, countedAmount: 0, isDisplayOnly, note: '', detailIds: [] };
       bucket.items.push(item);
     }
     item.displayAmount += displayAmount;
     item.countedAmount += countedAmount;
     if (note !== '' && item.note === '') item.note = note;
+    if (detailId !== null) item.detailIds.push(detailId);
     bucket.displayTotal += displayAmount;
     bucket.countedTotal += countedAmount;
     if (isDisplayOnly) bucket.hasDisplayOnlyManualPayment = true;
@@ -579,45 +631,82 @@ export class GojekGridService {
     return { exitedByPlate, outstandingDriverKeluar, exitedCount };
   }
 
-  /** Same aggregation the legacy ran in SQL, keyed on vehicle_plate_norm. */
-  private async fetchAllTimeStats(
+  /**
+   * Cumulative outstanding window (port of the legacy fetchCumulativeStats).
+   * Per plate: Σ|due| (billed) vs Σ|deduction + manual payment| (paid) over ALL
+   * history strictly BEFORE the first day of the month AFTER the selected one —
+   * no lower bound, so the balance accumulates from the plate's very first
+   * imported row, and a past month shows the balance as it stood back then.
+   * The month_* columns are the selected month's own slice of the same window,
+   * so outstanding(prev month) + outstandingMonth === outstanding by construction.
+   * Bebas-setoran days — explicit fleet_exceptions and Rental Monitoring
+   * bookings — are excluded from BOTH sides: not billed, not credited.
+   */
+  private async fetchCumulativeStats(
     plates: string[],
+    month: number,
+    year: number,
   ): Promise<
-    Map<string, { allTimeDeduction: number; allTimeDays: number; allTimeManualUncounted: number }>
+    Map<
+      string,
+      { cumulativeTarget: number; cumulativePaid: number; monthTarget: number; monthPaid: number }
+    >
   > {
     const map = new Map<
       string,
-      { allTimeDeduction: number; allTimeDays: number; allTimeManualUncounted: number }
+      { cumulativeTarget: number; cumulativePaid: number; monthTarget: number; monthPaid: number }
     >();
     if (!plates.length) return map;
 
+    const periodStart = `${year}-${String(month).padStart(2, '0')}-01`;
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const periodEndExclusive = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
     const result = await this.database.db.execute(sql`
       SELECT
-        vehicle_plate_norm AS plate,
+        d.vehicle_plate_norm AS plate,
+        SUM(CASE WHEN d.type ILIKE '%due%' THEN ABS(d.amount) ELSE 0 END)::bigint AS cum_target,
         SUM(CASE
-            WHEN type ILIKE '%deduction%' THEN ABS(amount)
-            WHEN type ILIKE '%manual payment%' AND COALESCE(is_manual_payment_setoran, 1) = 1 THEN ABS(amount)
+            WHEN d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%' THEN ABS(d.amount)
             ELSE 0
-        END)::bigint AS all_time_deduction,
-        COUNT(DISTINCT CASE WHEN type ILIKE '%deduction%' THEN transaction_date END)::int AS all_time_days,
+        END)::bigint AS cum_paid,
         SUM(CASE
-            WHEN type ILIKE '%manual payment%' AND COALESCE(is_manual_payment_setoran, 1) = 0 THEN ABS(amount)
+            WHEN d.transaction_date >= ${periodStart}::date AND d.type ILIKE '%due%' THEN ABS(d.amount)
             ELSE 0
-        END)::bigint AS all_time_manual_uncounted
-      FROM fleet_import_details
-      WHERE (type ILIKE '%deduction%' OR type ILIKE '%manual payment%')
-        AND vehicle_plate_norm IN (${sql.join(
+        END)::bigint AS month_target,
+        SUM(CASE
+            WHEN d.transaction_date >= ${periodStart}::date
+             AND (d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%') THEN ABS(d.amount)
+            ELSE 0
+        END)::bigint AS month_paid
+      FROM fleet_import_details d
+      WHERE d.transaction_date < ${periodEndExclusive}::date
+        AND (d.type ILIKE '%due%' OR d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%')
+        AND d.vehicle_plate_norm IN (${sql.join(
           plates.map((p) => sql`${p}`),
           sql`, `,
         )})
-      GROUP BY vehicle_plate_norm
+        AND NOT EXISTS (
+          SELECT 1 FROM fleet_exceptions e
+          WHERE e.is_bebas_setoran = TRUE
+            AND e.exception_date = d.transaction_date
+            AND regexp_replace(upper(e.vehicle_plate), '[^A-Z0-9]', '', 'g') = d.vehicle_plate_norm
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM rentals r
+          WHERE r.plate_number_norm = d.vehicle_plate_norm
+            AND d.transaction_date BETWEEN r.start_date AND r.end_date
+        )
+      GROUP BY d.vehicle_plate_norm
     `);
 
     for (const row of result as unknown as Array<Record<string, unknown>>) {
       map.set(String(row.plate), {
-        allTimeDeduction: Number(row.all_time_deduction),
-        allTimeDays: Number(row.all_time_days),
-        allTimeManualUncounted: Number(row.all_time_manual_uncounted),
+        cumulativeTarget: Number(row.cum_target),
+        cumulativePaid: Number(row.cum_paid),
+        monthTarget: Number(row.month_target),
+        monthPaid: Number(row.month_paid),
       });
     }
     return map;
