@@ -24,8 +24,8 @@ export class GrabController {
   @Get('grid')
   @CheckPolicies((a) => a.can('read', 'GrabImport'))
   @ApiOperation({ summary: '31-day earnings pivot grid (composite key plate|city|driver)' })
-  @ApiQuery({ name: 'month', example: 7 })
-  @ApiQuery({ name: 'year', example: 2026 })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
   @ApiQuery({ name: 'rentalPartner', required: false, isArray: true, type: String })
   @ApiQuery({ name: 'plate', required: false, type: String })
   async grid(
@@ -45,10 +45,10 @@ export class GrabController {
   @Get('cell')
   @CheckPolicies((a) => a.can('read', 'GrabImport'))
   @ApiOperation({ summary: 'Whole-month performance detail for one driver (eye modal)' })
-  @ApiQuery({ name: 'month', example: 7 })
-  @ApiQuery({ name: 'year', example: 2026 })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
   @ApiQuery({ name: 'compositeKey', description: 'plate|city|driver' })
-  @ApiQuery({ name: 'day', required: false, example: 1 })
+  @ApiQuery({ name: 'day', type: Number, required: false, example: 1 })
   async cell(
     @Query('month') month: string,
     @Query('year') year: string,
@@ -64,6 +64,8 @@ export class GrabController {
   @Get('performers')
   @CheckPolicies((a) => a.can('read', 'GrabImport'))
   @ApiOperation({ summary: 'Top/bottom 10 by total earning collected' })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
   async performers(@Query('month') month: string, @Query('year') year: string) {
     const period = parsePeriod(month, year);
     const grid = await this.gridService.buildGrid(period.month, period.year);

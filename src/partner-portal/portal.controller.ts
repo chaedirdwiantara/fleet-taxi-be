@@ -89,8 +89,8 @@ export class PortalController {
   @UseGuards(SessionGuard)
   @ApiCookieAuth('session')
   @ApiOperation({ summary: 'List own orders (paginated, filterable)' })
-  @ApiQuery({ name: 'page', required: false, example: 1 })
-  @ApiQuery({ name: 'pageSize', required: false, example: 50 })
+  @ApiQuery({ name: 'page', type: Number, required: false, example: 1 })
+  @ApiQuery({ name: 'pageSize', type: Number, required: false, example: 50 })
   @ApiQuery({ name: 'tripStatus', required: false })
   orders(
     @CurrentUser() user: SessionUser,
