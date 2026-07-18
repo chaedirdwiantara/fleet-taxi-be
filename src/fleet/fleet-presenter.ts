@@ -5,6 +5,7 @@
  * re-derives money. One presenter serves BOTH the admin and the partner-portal
  * fleet endpoints, so the wire contract has a single source of truth.
  */
+import type { DueSegment } from './due-segments';
 import {
   DailyDetailBucket,
   GojekGridResult,
@@ -57,9 +58,18 @@ export interface FleetRowDto {
   // so the Aksi → Edit form can reassign a plate / toggle Masuk Setoran on it.
   detailId: number | null;
   dailyTarget: number;
+  // The month's due amounts per day and their RLE ranges. When the target
+  // changed mid-month (>1 segment) the Setoran column lists each value with its
+  // active day range; dailyDue is also the per-day cell-tone baseline.
+  dailyDue: Record<number, number>;
+  dueSegments: DueSegment[];
   days: Record<number, DayCellValueDto>;
   summary: { totalDeduction: number; calculatedTarget: number; gap: number; outstanding: number };
   driverHistory: string[];
+  // Driver keluar: plate no longer appears in the newest import (auto-clears
+  // when it reappears). exitedLastSeen = last import date it was seen (YYYY-MM-DD).
+  isExited: boolean;
+  exitedLastSeen: string | null;
 }
 
 export interface FleetGridDto {
@@ -88,7 +98,11 @@ export interface PerformersDto {
 export interface GlobalSummaryDto {
   totalDeduction: number;
   totalDue: number;
-  totalOutstanding: number;
+  totalOutstanding: number; // active (non-exited) plates only
+  // Card "Outstanding Driver Keluar": all-time balance of plates that stopped
+  // appearing in imports, and how many of them still owe (non-zero balance).
+  outstandingDriverKeluar: number;
+  exitedCount: number;
 }
 export interface FleetChartsDto {
   daily: { day: number; total: number }[];
@@ -187,6 +201,8 @@ function toFleetRow(row: GojekVehicleRow): FleetRowDto {
     carId: row.targetId,
     detailId: row.detailId,
     dailyTarget: row.dailyTarget,
+    dailyDue: row.dailyDue,
+    dueSegments: row.dueSegments,
     days,
     summary: {
       totalDeduction: row.totalDeduction,
@@ -195,6 +211,8 @@ function toFleetRow(row: GojekVehicleRow): FleetRowDto {
       outstanding: row.outstanding,
     },
     driverHistory: row.driverHistory,
+    isExited: row.isExited,
+    exitedLastSeen: row.exitedLastSeen,
   };
 }
 
@@ -236,6 +254,8 @@ function toGlobalSummary(result: GojekGridResult): GlobalSummaryDto {
     totalDeduction: result.totalDeduction,
     totalDue: result.totalCalculatedTarget,
     totalOutstanding: result.totalOutstanding,
+    outstandingDriverKeluar: result.outstandingDriverKeluar,
+    exitedCount: result.exitedCount,
   };
 }
 
