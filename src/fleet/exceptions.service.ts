@@ -40,6 +40,15 @@ export class ExceptionsService {
     return row;
   }
 
+  async getById(id: number) {
+    const [row] = await this.database.db
+      .select()
+      .from(fleetExceptions)
+      .where(eq(fleetExceptions.id, id));
+    if (!row) throw new NotFoundException(`Exception ${id} not found`);
+    return row;
+  }
+
   async remove(id: number): Promise<{ deleted: true }> {
     const rows = await this.database.db
       .delete(fleetExceptions)

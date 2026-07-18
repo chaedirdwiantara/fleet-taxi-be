@@ -9,3 +9,7 @@ export * from './orders';
 export * from './fleet-gojek';
 export * from './fleet-grab';
 export * from './partner-plates';
+export * from './checkpoints';
+export * from './rentals';
+
+export * from './drivers';

@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
 import { normalizePlate } from '../common/util/plate';
 import { byteCompare } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
-import { fleetExceptions, fleetImportDetails, fleetTargets } from '../db/schema';
+import { fleetExceptions, fleetImportDetails, fleetTargets, rentals } from '../db/schema';
 import { encodeDueSegments } from './due-segments';
 import {
   DEFAULT_DAILY_TARGET,
@@ -13,7 +13,6 @@ import {
   GojekVehicleRow,
   NO_RENTAL_PARTNER,
 } from './gojek-grid.types';
-import { fetchRegisteredPartnerNames } from './registered-partner-names';
 
 /**
  * Faithful port of legacy AdminFleetMonitoringController::getIndex.
@@ -57,6 +56,10 @@ export class GojekGridService {
       // (admin); an EMPTY array = a partner with no registered plates → empty grid.
       // Never populate this from client input.
       scopePlates?: string[];
+      // Server-derived norm → registering-partner-name map (Daftarkan Plat).
+      // When present it is the authoritative Rental Partner label — the legacy
+      // fleet_targets.rental_partner string only fills unregistered plates.
+      partnerNameByNorm?: Map<string, string>;
     } = {},
   ): Promise<GojekGridResult> {
     const { db } = this.database;
@@ -202,12 +205,42 @@ export class GojekGridService {
       });
     }
 
+    // Rental Monitoring bookings mark their days exactly like bebas-setoran
+    // exceptions (legacy parity: jadwal-mobil-cogs wrote is_bebas_setoran=1
+    // day rows into the same table). Explicit fleet_exceptions win on clash.
+    const mm = String(month).padStart(2, '0');
+    const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const monthStart = `${year}-${mm}-01`;
+    const monthEnd = `${year}-${mm}-${String(lastDayOfMonth).padStart(2, '0')}`;
+    const rentalRows = await db
+      .select({
+        plateNorm: rentals.plateNumberNorm,
+        startDate: rentals.startDate,
+        endDate: rentals.endDate,
+        customerName: rentals.customerName,
+      })
+      .from(rentals)
+      .where(and(lte(rentals.startDate, monthEnd), gte(rentals.endDate, monthStart)));
+    for (const r of rentalRows) {
+      const from = r.startDate < monthStart ? 1 : Number(r.startDate.slice(8, 10));
+      const to = r.endDate > monthEnd ? lastDayOfMonth : Number(r.endDate.slice(8, 10));
+      if (!exceptionsMap.has(r.plateNorm)) exceptionsMap.set(r.plateNorm, new Map());
+      const perDay = exceptionsMap.get(r.plateNorm)!;
+      for (let d = from; d <= to; d++) {
+        if (!perDay.has(d)) {
+          perDay.set(d, {
+            keterangan: r.customerName ? `Rental — ${r.customerName}` : 'Rental',
+            isBebasSetoran: true,
+          });
+        }
+      }
+    }
+
     const pivotPlates = [
       ...new Set([...pivot.values()].map((v) => v.vehicle).filter((p) => p !== '')),
     ];
-    const [allTimeMap, registeredPartnerNames, exitStats] = await Promise.all([
+    const [allTimeMap, exitStats] = await Promise.all([
       this.fetchAllTimeStats(pivotPlates),
-      fetchRegisteredPartnerNames(this.database, pivotPlates),
       this.fetchExitStats(filters.scopePlates),
     ]);
 
@@ -236,10 +269,11 @@ export class GojekGridService {
         }
       }
 
-      // A plate registered by a live partner account (Daftarkan Plat) shows that
-      // account's name — the target's free-text rental_partner is only a fallback.
-      const registeredName = registeredPartnerNames.get(plateClean);
-      if (registeredName) v.rentalPartner = registeredName;
+      // Rental Partner syncs from the partner who registered the plate; the
+      // admin-entered fleet_targets string is only a fallback for plates that
+      // predate registration.
+      const registeredPartner = filters.partnerNameByNorm?.get(plateClean);
+      if (registeredPartner) v.rentalPartner = registeredPartner;
 
       let dailyTarget =
         manualTarget > 0

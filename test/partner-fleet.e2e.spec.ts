@@ -21,6 +21,7 @@ import {
   grabImports,
   partnerPlates,
   partners,
+  rentals,
   roles,
   userRoles,
   users,
@@ -212,6 +213,42 @@ describe('partner portal fleet monitoring (Daftarkan Plat + scoped grids)', () =
     await a.post('/partner/portal/plates').send({ plateNumber: 'b1111aa' }).expect(409);
     // blank/garbage plate → 400
     await a.post('/partner/portal/plates').send({ plateNumber: '   ' }).expect(400);
+  });
+
+  it('marks Rental Monitoring days on the Gojek grid (money wins, target shrinks)', async () => {
+    const { db } = database;
+    const d = (day: number) => `${YEAR}-0${MONTH}-${String(day).padStart(2, '0')}`;
+    await db.insert(rentals).values({
+      partnerId,
+      plateNumber: 'B 1111 AA',
+      plateNumberNorm: MINE_NORM,
+      startDate: d(5), // day 5 has spreadsheet money -> money wins, no marker
+      endDate: d(8),
+      pricePerDay: 400000,
+      customerName: 'Andi',
+    });
+
+    const a = await login();
+    const grid = await a
+      .get(`/partner/portal/fleet/gojek/grid?month=${MONTH}&year=${YEAR}`)
+      .expect(200);
+    const mine = grid.body.data.rows.find((r: { plateNorm: string }) => r.plateNorm === MINE_NORM);
+
+    // rental days render through the exception channel like legacy bebas-setoran
+    expect(mine.days['7'].exception).toEqual({
+      isBebasSetoran: true,
+      keterangan: 'Rental — Andi',
+    });
+    expect(mine.days['8'].exception?.isBebasSetoran).toBe(true);
+    // deposit money on days 5 & 6 wins over the rental marker
+    expect(mine.days['5'].exception ?? null).toBeNull();
+    expect(mine.days['6'].exception ?? null).toBeNull();
+    expect(mine.days['5'].countedAmount).toBe(300000);
+    // bebas days shrink the expected target: 2 marker days (7, 8) excluded
+    const remainingDays = 30 - 5 + 1; // minDay 5, April = 30 days
+    expect(mine.summary.calculatedTarget).toBe(mine.dailyTarget * (remainingDays - 2));
+
+    await db.delete(rentals).where(eq(rentals.partnerId, partnerId));
   });
 
   it('scopes the Gojek grid + summary to registered plates only', async () => {

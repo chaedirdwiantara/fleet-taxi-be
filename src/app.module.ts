@@ -16,7 +16,9 @@ import { GrabModule } from './grab/grab.module';
 import { HealthModule } from './health/health.module';
 import { ImportModule } from './import/import.module';
 import { PartnerApiModule } from './partner-api/partner-api.module';
+import { PartnerDriversModule } from './partner-drivers/partner-drivers.module';
 import { PartnerPortalModule } from './partner-portal/partner-portal.module';
+import { PartnerRentalsModule } from './partner-rentals/partner-rentals.module';
 import { PartnersModule } from './partners/partners.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { UsersModule } from './users/users.module';
@@ -53,6 +55,8 @@ import { UsersModule } from './users/users.module';
     FleetModule,
     GrabModule,
     PartnerPortalModule,
+    PartnerRentalsModule,
+    PartnerDriversModule,
     PartnerApiModule,
   ],
   providers: [

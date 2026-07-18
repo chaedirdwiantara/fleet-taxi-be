@@ -17,11 +17,10 @@ import { CheckPolicies } from '../common/decorators/check-policies.decorator';
 import { PoliciesGuard } from '../common/guards/policies.guard';
 import { SessionGuard } from '../common/guards/session.guard';
 import { parsePeriod, toStringArray } from '../common/util/period';
+import { AdminFleetService } from './admin-fleet.service';
 import { DetailsService } from './details.service';
 import { CreateExceptionDto, EditDriverDto } from './dto/fleet.dto';
 import { ExceptionsService } from './exceptions.service';
-import { toCellBreakdown, toFleetGrid, toGojekSummary, toPerformers } from './fleet-presenter';
-import { GojekGridService } from './gojek-grid.service';
 
 @ApiTags('admin-fleet-gojek')
 @ApiCookieAuth('session')
@@ -29,7 +28,7 @@ import { GojekGridService } from './gojek-grid.service';
 @Controller('admin/fleet/gojek')
 export class GojekController {
   constructor(
-    private readonly gridService: GojekGridService,
+    private readonly adminFleet: AdminFleetService,
     private readonly exceptionsService: ExceptionsService,
     private readonly detailsService: DetailsService,
   ) {}
@@ -48,11 +47,10 @@ export class GojekController {
     @Query('plate') plate?: string,
   ) {
     const period = parsePeriod(month, year);
-    const result = await this.gridService.buildGrid(period.month, period.year, {
+    return this.adminFleet.gojekGrid(period.month, period.year, {
       rentalPartners: toStringArray(rentalPartner),
       plate,
     });
-    return toFleetGrid(result);
   }
 
   @Get('cell')
@@ -74,9 +72,9 @@ export class GojekController {
     if (!Number.isInteger(day) || day < 1 || day > 31) {
       throw new BadRequestException('day must be an integer 1..31');
     }
-    const bucket = await this.gridService.getCell(period.month, period.year, plate, day);
-    if (!bucket) throw new NotFoundException('No transactions for that vehicle/day');
-    return toCellBreakdown(bucket, plate, day);
+    const breakdown = await this.adminFleet.gojekCell(period.month, period.year, plate, day);
+    if (!breakdown) throw new NotFoundException('No transactions for that vehicle/day');
+    return breakdown;
   }
 
   @Get('details/:detailId')
@@ -122,36 +120,34 @@ export class GojekController {
   @ApiQuery({ name: 'month', type: Number, example: 7 })
   @ApiQuery({ name: 'year', type: Number, example: 2026 })
   @ApiQuery({ name: 'day', type: Number, required: false, example: 15 })
+  @ApiQuery({ name: 'rentalPartner', required: false, isArray: true, type: String })
   async summary(
     @Query('month') month: string,
     @Query('year') year: string,
     @Query('day') dayRaw?: string,
+    @Query('rentalPartner') rentalPartner?: string | string[],
   ) {
     const period = parsePeriod(month, year);
-    const grid = await this.gridService.buildGrid(period.month, period.year);
     const day = dayRaw ? Number(dayRaw) : undefined;
-    return toGojekSummary(grid, day);
+    return this.adminFleet.gojekSummary(
+      period.month,
+      period.year,
+      day,
+      toStringArray(rentalPartner),
+    );
   }
 
   @Get('performers')
   @CheckPolicies((a) => a.can('read', 'FleetImport'))
   @ApiOperation({ summary: 'Top/bottom 10 drivers by outstanding' })
-  @ApiQuery({ name: 'month', type: Number, example: 7 })
-  @ApiQuery({ name: 'year', type: Number, example: 2026 })
   async performers(@Query('month') month: string, @Query('year') year: string) {
     const period = parsePeriod(month, year);
-    const grid = await this.gridService.buildGrid(period.month, period.year);
-    return toPerformers({
-      topPerformers: grid.topPerformers,
-      bottomPerformers: grid.bottomPerformers,
-    });
+    return this.adminFleet.gojekPerformers(period.month, period.year);
   }
 
   @Get('exceptions')
   @CheckPolicies((a) => a.can('read', 'FleetException'))
   @ApiOperation({ summary: 'List exceptions for a period' })
-  @ApiQuery({ name: 'month', type: Number, example: 7 })
-  @ApiQuery({ name: 'year', type: Number, example: 2026 })
   exceptions(@Query('month') month: string, @Query('year') year: string) {
     const period = parsePeriod(month, year);
     return this.exceptionsService.list(period.month, period.year);
