@@ -4,6 +4,7 @@ import { normalizePlate } from '../common/util/plate';
 import { byteCompare } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
 import { fleetExceptions, fleetImportDetails, fleetTargets } from '../db/schema';
+import { encodeDueSegments } from './due-segments';
 import {
   DEFAULT_DAILY_TARGET,
   DailyDetailBucket,
@@ -12,6 +13,7 @@ import {
   GojekVehicleRow,
   NO_RENTAL_PARTNER,
 } from './gojek-grid.types';
+import { fetchRegisteredPartnerNames } from './registered-partner-names';
 
 /**
  * Faithful port of legacy AdminFleetMonitoringController::getIndex.
@@ -107,6 +109,8 @@ export class GojekGridService {
           targetId: null,
           dailyData: {},
           dailyCountedData: {},
+          dailyDue: {},
+          dueSegments: [],
           dailyDetails: {},
           manualPaymentDays: [],
           manualPaymentDisplayOnlyDays: [],
@@ -121,6 +125,8 @@ export class GojekGridService {
           minDay: 31,
           maxDay: 1,
           outstanding: 0,
+          isExited: false,
+          exitedLastSeen: null,
         };
         pivot.set(plateKey, v);
       }
@@ -138,6 +144,7 @@ export class GojekGridService {
       if (this.isDueType(row.type)) {
         v.totalDue += amount;
         v.dueCount++;
+        v.dailyDue[day] = (v.dailyDue[day] ?? 0) + Math.abs(amount);
         if (day < v.minDay) v.minDay = day;
         if (day > v.maxDay) v.maxDay = day;
       } else if (this.isDeductionType(row.type) || isManual) {
@@ -195,8 +202,13 @@ export class GojekGridService {
       });
     }
 
-    const allTimeMap = await this.fetchAllTimeStats([
+    const pivotPlates = [
       ...new Set([...pivot.values()].map((v) => v.vehicle).filter((p) => p !== '')),
+    ];
+    const [allTimeMap, registeredPartnerNames, exitStats] = await Promise.all([
+      this.fetchAllTimeStats(pivotPlates),
+      fetchRegisteredPartnerNames(this.database, pivotPlates),
+      this.fetchExitStats(filters.scopePlates),
     ]);
 
     const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -223,6 +235,11 @@ export class GojekGridService {
           }
         }
       }
+
+      // A plate registered by a live partner account (Daftarkan Plat) shows that
+      // account's name — the target's free-text rental_partner is only a fallback.
+      const registeredName = registeredPartnerNames.get(plateClean);
+      if (registeredName) v.rentalPartner = registeredName;
 
       let dailyTarget =
         manualTarget > 0
@@ -266,6 +283,14 @@ export class GojekGridService {
       const allTimeDeduction = at?.allTimeDeduction ?? 0;
       const allTimeManualUncounted = at?.allTimeManualUncounted ?? 0;
       v.outstanding = dailyTarget * allTimeDays - allTimeDeduction - allTimeManualUncounted;
+
+      const exit = exitStats.exitedByPlate.get(plateClean);
+      if (exit) {
+        v.isExited = true;
+        v.exitedLastSeen = exit.lastSeen;
+      }
+
+      v.dueSegments = encodeDueSegments(v.dailyDue);
     }
 
     // ── available filters (computed BEFORE filtering, like legacy) ───────
@@ -322,7 +347,8 @@ export class GojekGridService {
     for (const r of rows) {
       totalDeduction += r.totalDeduction;
       totalCalculatedTarget += r.calculatedTarget;
-      totalOutstanding += r.outstanding;
+      // exited plates report under outstandingDriverKeluar, not the main total
+      if (!r.isExited) totalOutstanding += r.outstanding;
       for (const [d, val] of Object.entries(r.dailyCountedData)) {
         dailyTotals[Number(d)] = (dailyTotals[Number(d)] ?? 0) + val;
       }
@@ -341,6 +367,8 @@ export class GojekGridService {
       totalDeduction,
       totalCalculatedTarget,
       totalOutstanding,
+      outstandingDriverKeluar: exitStats.outstandingDriverKeluar,
+      exitedCount: exitStats.exitedCount,
       availableRentalPartners,
       availablePlates,
       topPerformers,
@@ -362,6 +390,8 @@ export class GojekGridService {
       totalDeduction: 0,
       totalCalculatedTarget: 0,
       totalOutstanding: 0,
+      outstandingDriverKeluar: 0,
+      exitedCount: 0,
       availableRentalPartners: [NO_RENTAL_PARTNER],
       availablePlates: [],
       topPerformers: [],
@@ -433,6 +463,86 @@ export class GojekGridService {
     const top = [...performers].sort((a, b) => a.outstanding - b.outstanding).slice(0, 10);
     const bottom = [...performers].sort((a, b) => b.outstanding - a.outstanding).slice(0, 10);
     return { topPerformers: top, bottomPerformers: bottom };
+  }
+
+  /**
+   * Driver-keluar detection + balance (ported from the legacy
+   * fetchExitedFleetOutstanding). A plate is exited when its all-time last
+   * transaction date is older than the newest import date ANYWHERE — the
+   * reference is the latest upload, so it stays global even under partner
+   * scoping (a partner whose whole fleet left still sees every exit). A plate
+   * that reappears in a later import stops matching automatically (MAX moves).
+   *
+   * The balance is the plate's ALL-TIME due − paid (deduction + manual payment,
+   * regardless of the counted flag — an exited driver's debt is a "now" fact),
+   * skipping bebas-setoran exception days. exitedCount counts only plates whose
+   * balance is non-zero, matching the legacy card.
+   */
+  private async fetchExitStats(scopePlates?: string[]): Promise<{
+    exitedByPlate: Map<string, { lastSeen: string; outstanding: number }>;
+    outstandingDriverKeluar: number;
+    exitedCount: number;
+  }> {
+    const empty = { exitedByPlate: new Map(), outstandingDriverKeluar: 0, exitedCount: 0 };
+    if (scopePlates !== undefined && scopePlates.length === 0) return empty;
+
+    const scopeFilter = scopePlates?.length
+      ? sql`AND vehicle_plate_norm IN (${sql.join(
+          scopePlates.map((p) => sql`${p}`),
+          sql`, `,
+        )})`
+      : sql``;
+
+    const lastSeenRows = (await this.database.db.execute(sql`
+      SELECT
+        vehicle_plate_norm AS plate,
+        MAX(transaction_date)::text AS last_seen,
+        (SELECT MAX(transaction_date)::text FROM fleet_import_details) AS global_last
+      FROM fleet_import_details
+      WHERE vehicle_plate_norm <> '' ${scopeFilter}
+      GROUP BY vehicle_plate_norm
+    `)) as unknown as Array<{ plate: string; last_seen: string; global_last: string }>;
+
+    const exitedByPlate = new Map<string, { lastSeen: string; outstanding: number }>();
+    for (const row of lastSeenRows) {
+      if (row.last_seen < row.global_last) {
+        exitedByPlate.set(row.plate, { lastSeen: row.last_seen, outstanding: 0 });
+      }
+    }
+    if (!exitedByPlate.size) return empty;
+
+    const balanceRows = (await this.database.db.execute(sql`
+      SELECT
+        d.vehicle_plate_norm AS plate,
+        SUM(CASE WHEN d.type ILIKE '%due%' THEN ABS(d.amount) ELSE 0 END)::bigint AS target_sum,
+        SUM(CASE
+            WHEN d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%' THEN ABS(d.amount)
+            ELSE 0
+        END)::bigint AS paid_sum
+      FROM fleet_import_details d
+      WHERE (d.type ILIKE '%due%' OR d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%')
+        AND d.vehicle_plate_norm IN (${sql.join(
+          [...exitedByPlate.keys()].map((p) => sql`${p}`),
+          sql`, `,
+        )})
+        AND NOT EXISTS (
+          SELECT 1 FROM fleet_exceptions e
+          WHERE e.is_bebas_setoran = TRUE
+            AND e.exception_date = d.transaction_date
+            AND regexp_replace(upper(e.vehicle_plate), '[^A-Z0-9]', '', 'g') = d.vehicle_plate_norm
+        )
+      GROUP BY d.vehicle_plate_norm
+    `)) as unknown as Array<{ plate: string; target_sum: string; paid_sum: string }>;
+
+    let outstandingDriverKeluar = 0;
+    let exitedCount = 0;
+    for (const row of balanceRows) {
+      const outstanding = Number(row.target_sum) - Number(row.paid_sum);
+      exitedByPlate.get(row.plate)!.outstanding = outstanding;
+      outstandingDriverKeluar += outstanding;
+      if (outstanding !== 0) exitedCount++;
+    }
+    return { exitedByPlate, outstandingDriverKeluar, exitedCount };
   }
 
   /** Same aggregation the legacy ran in SQL, keyed on vehicle_plate_norm. */

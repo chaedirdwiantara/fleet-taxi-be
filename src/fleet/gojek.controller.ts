@@ -37,8 +37,8 @@ export class GojekController {
   @Get('grid')
   @CheckPolicies((a) => a.can('read', 'FleetImport'))
   @ApiOperation({ summary: '31-day deposit pivot grid (rows = vehicles)' })
-  @ApiQuery({ name: 'month', example: 7 })
-  @ApiQuery({ name: 'year', example: 2026 })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
   @ApiQuery({ name: 'rentalPartner', required: false, isArray: true, type: String })
   @ApiQuery({ name: 'plate', required: false, type: String })
   async grid(
@@ -58,10 +58,10 @@ export class GojekController {
   @Get('cell')
   @CheckPolicies((a) => a.can('read', 'FleetImport'))
   @ApiOperation({ summary: 'One vehicle+day transaction breakdown (cell-click modal)' })
-  @ApiQuery({ name: 'month', example: 7 })
-  @ApiQuery({ name: 'year', example: 2026 })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
   @ApiQuery({ name: 'plate', description: 'Row key: normalized plate or manual_<detailId>' })
-  @ApiQuery({ name: 'day', example: 15 })
+  @ApiQuery({ name: 'day', type: Number, example: 15 })
   async cell(
     @Query('month') month: string,
     @Query('year') year: string,
@@ -82,8 +82,8 @@ export class GojekController {
   @Get('details/:detailId')
   @CheckPolicies((a) => a.can('read', 'FleetImport'))
   @ApiOperation({ summary: 'One import detail row (prefill for the Edit form)' })
-  @ApiQuery({ name: 'month', required: false, example: 7 })
-  @ApiQuery({ name: 'year', required: false, example: 2026 })
+  @ApiQuery({ name: 'month', type: Number, required: false, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, required: false, example: 2026 })
   detail(
     @Param('detailId', ParseIntPipe) detailId: number,
     @Query('month') month?: string,
@@ -119,9 +119,9 @@ export class GojekController {
   @Get('summary')
   @CheckPolicies((a) => a.can('read', 'FleetImport'))
   @ApiOperation({ summary: 'Dashboard aggregates: summary cards + driver activity + charts' })
-  @ApiQuery({ name: 'month', example: 7 })
-  @ApiQuery({ name: 'year', example: 2026 })
-  @ApiQuery({ name: 'day', required: false, example: 15 })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
+  @ApiQuery({ name: 'day', type: Number, required: false, example: 15 })
   async summary(
     @Query('month') month: string,
     @Query('year') year: string,
@@ -136,6 +136,8 @@ export class GojekController {
   @Get('performers')
   @CheckPolicies((a) => a.can('read', 'FleetImport'))
   @ApiOperation({ summary: 'Top/bottom 10 drivers by outstanding' })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
   async performers(@Query('month') month: string, @Query('year') year: string) {
     const period = parsePeriod(month, year);
     const grid = await this.gridService.buildGrid(period.month, period.year);
@@ -148,6 +150,8 @@ export class GojekController {
   @Get('exceptions')
   @CheckPolicies((a) => a.can('read', 'FleetException'))
   @ApiOperation({ summary: 'List exceptions for a period' })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
   exceptions(@Query('month') month: string, @Query('year') year: string) {
     const period = parsePeriod(month, year);
     return this.exceptionsService.list(period.month, period.year);
