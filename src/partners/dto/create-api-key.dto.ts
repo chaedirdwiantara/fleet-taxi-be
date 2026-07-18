@@ -9,6 +9,7 @@ export class CreateApiKeyDto {
   label?: string;
 
   @ApiPropertyOptional({
+    type: String,
     isArray: true,
     example: ['pricelist', 'order:create', 'order:read'],
     description: 'Scopes granted to the key',

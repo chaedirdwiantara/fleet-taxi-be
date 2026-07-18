@@ -36,8 +36,8 @@ export class PortalFleetController {
 
   @Get('gojek/grid')
   @ApiOperation({ summary: 'Own Gojek 31-day deposit grid (scoped to registered plates)' })
-  @ApiQuery({ name: 'month', example: 7 })
-  @ApiQuery({ name: 'year', example: 2026 })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
   gojekGrid(
     @CurrentUser() user: SessionUser,
     @Query('month') month: string,
@@ -50,10 +50,10 @@ export class PortalFleetController {
 
   @Get('gojek/cell')
   @ApiOperation({ summary: 'Own Gojek vehicle+day breakdown' })
-  @ApiQuery({ name: 'month', example: 7 })
-  @ApiQuery({ name: 'year', example: 2026 })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
   @ApiQuery({ name: 'plate', description: 'Row key: normalized plate or manual_<detailId>' })
-  @ApiQuery({ name: 'day', example: 15 })
+  @ApiQuery({ name: 'day', type: Number, example: 15 })
   async gojekCell(
     @CurrentUser() user: SessionUser,
     @Query('month') month: string,
@@ -75,9 +75,9 @@ export class PortalFleetController {
 
   @Get('gojek/summary')
   @ApiOperation({ summary: 'Own Gojek dashboard aggregates (cards + driver activity + charts)' })
-  @ApiQuery({ name: 'month', example: 7 })
-  @ApiQuery({ name: 'year', example: 2026 })
-  @ApiQuery({ name: 'day', required: false, example: 15 })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
+  @ApiQuery({ name: 'day', type: Number, required: false, example: 15 })
   gojekSummary(
     @CurrentUser() user: SessionUser,
     @Query('month') month: string,
@@ -120,8 +120,8 @@ export class PortalFleetController {
 
   @Get('grab/grid')
   @ApiOperation({ summary: 'Own Grab earnings grid (scoped to registered plates)' })
-  @ApiQuery({ name: 'month', example: 7 })
-  @ApiQuery({ name: 'year', example: 2026 })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
   grabGrid(
     @CurrentUser() user: SessionUser,
     @Query('month') month: string,
@@ -134,10 +134,10 @@ export class PortalFleetController {
 
   @Get('grab/cell')
   @ApiOperation({ summary: 'Own Grab driver whole-month performance detail' })
-  @ApiQuery({ name: 'month', example: 7 })
-  @ApiQuery({ name: 'year', example: 2026 })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
   @ApiQuery({ name: 'compositeKey', description: 'plate|city|driver' })
-  @ApiQuery({ name: 'day', required: false, example: 1 })
+  @ApiQuery({ name: 'day', type: Number, required: false, example: 1 })
   async grabCell(
     @CurrentUser() user: SessionUser,
     @Query('month') month: string,

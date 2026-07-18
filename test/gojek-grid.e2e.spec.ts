@@ -314,6 +314,12 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     expect(row!.dailyData[7]).toBe(50000); // display
     expect(row!.dailyCountedData[7]).toBe(0); // uncounted
     expect(row!.manualPaymentDisplayOnlyDays).toContain(7);
+    // per-day due target + its RLE segments (target changed between day 3 and 4)
+    expect(row!.dailyDue).toEqual({ 3: 500000, 4: 450000 });
+    expect(row!.dueSegments).toEqual([
+      { amount: 500000, fromDay: 3, toDay: 3 },
+      { amount: 450000, fromDay: 4, toDay: 4 },
+    ]);
   });
 
   it('manual fleet_target wins over inference for G7772KB', async () => {
@@ -370,6 +376,23 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     const empty = await gojek.buildGrid(MONTH, YEAR, { scopePlates: [] });
     expect(empty.rows).toHaveLength(0);
     expect(empty.totalOutstanding).toBe(0);
+  });
+
+  it('flags driver keluar and partitions outstanding into the card (scoped for determinism)', async () => {
+    // G7771KA's newest row is day 7 while the newest import date anywhere is
+    // later (G7772KB has day 10) -> exited. Scoping to the one plate makes the
+    // card sums independent of unrelated data in the shared test database.
+    const grid = await gojek.buildGrid(MONTH, YEAR, { scopePlates: ['G7771KA'] });
+    const row = grid.rows.find((r) => r.key === 'G7771KA');
+    expect(row!.isExited).toBe(true);
+    expect(row!.exitedLastSeen).toBe(`${YEAR}-0${MONTH}-07`);
+
+    // all-time balance: due 950000 − paid (400000 + 100000 + 50000); the day-5
+    // 480000 deduction sits on a bebas-setoran day and is skipped entirely
+    expect(grid.outstandingDriverKeluar).toBe(400000);
+    expect(grid.exitedCount).toBe(1);
+    // the exited row's outstanding leaves the main total (cards partition it)
+    expect(grid.totalOutstanding).toBe(0);
   });
 
   it('builds the Grab composite-key pivot with summed summary columns', async () => {

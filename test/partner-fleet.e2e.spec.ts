@@ -191,6 +191,8 @@ describe('partner portal fleet monitoring (Daftarkan Plat + scoped grids)', () =
       totalDeduction: 0,
       totalDue: 0,
       totalOutstanding: 0,
+      outstandingDriverKeluar: 0,
+      exitedCount: 0,
     });
   });
 

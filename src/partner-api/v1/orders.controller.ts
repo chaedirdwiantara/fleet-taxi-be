@@ -36,8 +36,8 @@ export class PartnerOrdersController {
   @Get()
   @RequireScopes('order:read')
   @ApiOperation({ summary: 'Order history for the authenticated partner' })
-  @ApiQuery({ name: 'page', required: false, example: 1 })
-  @ApiQuery({ name: 'pageSize', required: false, example: 50 })
+  @ApiQuery({ name: 'page', type: Number, required: false, example: 1 })
+  @ApiQuery({ name: 'pageSize', type: Number, required: false, example: 50 })
   list(
     @Req() req: Request,
     @Query('page') pageRaw?: string,

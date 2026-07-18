@@ -4,6 +4,7 @@ import { normalizePlate } from '../common/util/plate';
 import { byteCompare } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
 import { grabImportDetails, grabTargets } from '../db/schema';
+import { fetchRegisteredPartnerNames } from '../fleet/registered-partner-names';
 
 export interface GrabVehicleRow {
   key: string; // plate|city|driver
@@ -156,7 +157,12 @@ export class GrabGridService {
     }
 
     // target enrichment (exact normalized-plate match, like legacy)
-    const targets = await db.select().from(grabTargets);
+    const [targets, registeredPartnerNames] = await Promise.all([
+      db.select().from(grabTargets),
+      fetchRegisteredPartnerNames(this.database, [
+        ...new Set([...pivot.values()].map((v) => v.plateNumber).filter((p) => p !== '')),
+      ]),
+    ]);
     for (const v of pivot.values()) {
       const plateClean = v.plateNumber;
       for (const t of targets) {
@@ -169,6 +175,10 @@ export class GrabGridService {
           break;
         }
       }
+      // A plate registered by a live partner account (Daftarkan Plat) shows that
+      // account's name — the target's free-text rental_partner is only a fallback.
+      const registeredName = registeredPartnerNames.get(plateClean);
+      if (registeredName) v.rentalPartner = registeredName;
     }
 
     // legacy strcmp order: rental_partner -> city -> plate_number

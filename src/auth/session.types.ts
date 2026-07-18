@@ -15,6 +15,11 @@ declare module 'express-session' {
   interface SessionData {
     adminUser?: SessionUser;
     partnerUser?: SessionUser;
+    // Login timestamps (epoch ms) per audience — the absolute session cap in
+    // session-audience.ts is enforced against these, independent of the
+    // rolling idle cookie.
+    adminLoginAt?: number;
+    partnerLoginAt?: number;
   }
 }
 

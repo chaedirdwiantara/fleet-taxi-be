@@ -110,7 +110,7 @@ Decided by the user — do not re-litigate.
 ### Two separate repos (NOT a monorepo)
 
 - **`fleet-taxi-dashboard-api`** — NestJS backend. Deployed to **`api.fleet-taxi.id`**.
-- **`fleet-taxi-dashboard-web`** — React/Vite frontend. Deployed to **`app.fleet-taxi.id`**.
+- **`fleet-taxi-dashboard-web`** — React/Vite frontend. Deployed to **`fleet-taxi.id`** (root domain, Cloudflare Pages project `fleet-taxi-web`).
 
 Built in **separate chats**. This PROJECT-BRIEF.md is the shared contract that keeps them aligned.
 
@@ -124,7 +124,7 @@ Built in **separate chats**. This PROJECT-BRIEF.md is the shared contract that k
 
 - **Humans (admin + partner portal):** **HTTP-only, Secure, SameSite cookie session**. Session store in Redis. Login sets the cookie; all app→api calls send `credentials: 'include'`.
 - **External partner API (`/partner/v1`):** **`Authorization: Bearer <api_key>`**. Keys are **hashed at rest** (argon2/bcrypt or SHA-256+pepper — decide in backend chat), scoped to one partner, **rate-limited**, revocable, and never logged. **No cookies** on this surface.
-- **CORS:** `app.fleet-taxi.id` ↔ `api.fleet-taxi.id` are different subdomains → configure CORS with an explicit origin allowlist and **`credentials: true`**; cookies set with `Domain=.fleet-taxi.id` (or exact `api.` host) + `SameSite=None; Secure` so the browser sends them cross-subdomain.
+- **CORS:** `fleet-taxi.id` (frontend, root domain) ↔ `api.fleet-taxi.id` are different hosts → configure CORS with an explicit origin allowlist and **`credentials: true`**; cookies set with `Domain=.fleet-taxi.id` (or exact `api.` host) + `SameSite=None; Secure` so the browser sends them cross-host.
 - **RBAC:** CASL abilities per role (super-admin, admin, partner, …). Partner ability is **row-scoped** to `partner_id` — a partner can never read another partner's orders, on either the portal API or the external API.
 
 ### Realtime event catalog (shared, small — R1)
@@ -407,7 +407,7 @@ DATABASE_URL                # postgres://...
 REDIS_URL                   # BullMQ + Socket.IO adapter + session store
 SESSION_SECRET
 COOKIE_DOMAIN               # .fleet-taxi.id
-CORS_ORIGINS                # https://app.fleet-taxi.id
+CORS_ORIGINS                # https://fleet-taxi.id
 API_KEY_PEPPER             # for hashing partner API keys
 S3_BUCKET / S3_REGION       # ap-southeast-1
 AWS_REGION                  # ap-southeast-1
@@ -429,9 +429,9 @@ VITE_APP_ENV
 - **Backend:** **ECS Fargate or App Runner** — a **persistent server** (NOT pure Lambda) because of the Socket.IO gateway and BullMQ workers.
 - **Database:** **PostgreSQL on RDS** (16/17), PostGIS-capable.
 - **Cache/Queue:** **Redis on ElastiCache** (BullMQ, Socket.IO Redis adapter, sessions).
-- **Frontend:** static Vite build on **S3 + CloudFront** (or Amplify).
+- **Frontend:** static Vite build on **Cloudflare Pages** (project `fleet-taxi-web`), served at the root domain **`fleet-taxi.id`**.
 - **Object storage:** **S3** for uploaded import files (`import/fleet-monitoring/<YYYY-MM>/…`) and generated exports.
-- **DNS/CDN:** **Cloudflare** (same as legacy). Domain **`fleet-taxi.id`** → **`app.fleet-taxi.id`** (frontend), **`api.fleet-taxi.id`** (backend).
+- **DNS/CDN:** **Cloudflare** (same as legacy). Domain **`fleet-taxi.id`** → root domain (frontend, Cloudflare Pages), **`api.fleet-taxi.id`** (backend).
 - **Repos:** two separate git repos — **`fleet-taxi-dashboard-api`** (backend), **`fleet-taxi-dashboard-web`** (frontend).
 
 ---

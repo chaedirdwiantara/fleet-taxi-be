@@ -16,8 +16,10 @@ export class RegisteredPlatesService {
 
   /**
    * All registered plate norms plus norm → Type and norm → partner-name maps
-   * from registration. Two partners may register the same plate; the earliest
-   * registration wins in both maps so they stay deterministic.
+   * from registration. Two partners may register the same plate (e.g. a fleet
+   * handed over to a new partner while the old account lingers); the LATEST
+   * registration wins in both maps, so re-registering a plate transfers its
+   * Rental Partner label immediately and deterministically.
    */
   async unionScope(): Promise<{
     norms: string[];
@@ -39,12 +41,9 @@ export class RegisteredPlatesService {
     const partnerNameByNorm = new Map<string, string>();
     for (const row of rows) {
       norms.add(row.norm);
-      if (row.vehicleType && !typeByNorm.has(row.norm)) {
-        typeByNorm.set(row.norm, row.vehicleType);
-      }
-      if (row.partnerName && !partnerNameByNorm.has(row.norm)) {
-        partnerNameByNorm.set(row.norm, row.partnerName);
-      }
+      // ascending id → later registrations overwrite earlier ones
+      if (row.vehicleType) typeByNorm.set(row.norm, row.vehicleType);
+      if (row.partnerName) partnerNameByNorm.set(row.norm, row.partnerName);
     }
     return { norms: [...norms], typeByNorm, partnerNameByNorm };
   }

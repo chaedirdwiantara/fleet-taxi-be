@@ -46,10 +46,14 @@ export class PortalController {
     }
     // Regenerate against fixation, but carry any coexisting admin session across
     // so a partner login doesn't log the admin out.
-    const adminUser = req.session.adminUser;
+    const { adminUser, adminLoginAt } = req.session;
     await regenerateSession(req);
-    if (adminUser) req.session.adminUser = adminUser;
+    if (adminUser) {
+      req.session.adminUser = adminUser;
+      req.session.adminLoginAt = adminLoginAt;
+    }
     req.session.partnerUser = user;
+    req.session.partnerLoginAt = Date.now();
     return user;
   }
 
@@ -59,6 +63,7 @@ export class PortalController {
   @ApiCookieAuth('session')
   async logout(@Req() req: Request): Promise<{ loggedOut: true }> {
     delete req.session.partnerUser;
+    delete req.session.partnerLoginAt;
     if (req.session.adminUser) {
       await saveSession(req);
     } else {
@@ -89,8 +94,8 @@ export class PortalController {
   @UseGuards(SessionGuard)
   @ApiCookieAuth('session')
   @ApiOperation({ summary: 'List own orders (paginated, filterable)' })
-  @ApiQuery({ name: 'page', required: false, example: 1 })
-  @ApiQuery({ name: 'pageSize', required: false, example: 50 })
+  @ApiQuery({ name: 'page', type: Number, required: false, example: 1 })
+  @ApiQuery({ name: 'pageSize', type: Number, required: false, example: 50 })
   @ApiQuery({ name: 'tripStatus', required: false })
   orders(
     @CurrentUser() user: SessionUser,
