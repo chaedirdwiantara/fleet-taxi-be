@@ -38,7 +38,7 @@ export class CreateDepositInstallmentDto {
   @ApiPropertyOptional({
     example: 100000,
     description:
-      'Cicilan hanya berlaku pada hari aktif dengan setoran >= nilai ini (inklusif). Kosong = semua hari aktif.',
+      'Setoran harian WAJIB driver — tidak diambil untuk cicilan. Hanya surplus di atas nilai ini yang memotong cicilan (boleh sebagian; kekurangan setoran wajib dibawa ke hari berikutnya, kelebihan surplus jadi pembayaran di muka). Kosong = mode tetap: potong nominal penuh per hari aktif.',
   })
   @IsOptional()
   @IsInt()
