@@ -142,14 +142,14 @@ describe('deposit installments (cicilan deposit)', () => {
     expect(resB.body.data).toEqual([]);
   });
 
-  it('creates a rule and derives the history: gate inclusive, duration capped', async () => {
+  it('creates a rule and derives the surplus ledger: uncapped prepayment reaches lunas early', async () => {
     const res = await agentA
       .post('/partner/portal/deposit-installments')
       .send({
         title: 'Cicilan Deposit Budi',
         driverName: 'budi  santoso', // normalized server-side
         installmentAmount: 25000,
-        installmentCount: 2,
+        installmentCount: 2, // total 50.000
         minDailySetoran: 100000,
         effectiveDate: `${YEAR}-0${MONTH}-01`,
         note: 'Deposit 500.000',
@@ -158,17 +158,18 @@ describe('deposit installments (cicilan deposit)', () => {
     const row = res.body.data as Record<string, unknown>;
     ruleId = row.id as number;
     expect(row.driverName).toBe(DRIVER);
-    // days 1 and 2 qualify (2 = inclusive boundary), day 3 below gate,
-    // day 4 cut off by the 2x duration cap, day 5 not an active day
+    // day 1: setoran 150.000 − wajib 100.000 = surplus 50.000 → the whole
+    // 50.000 total is prepaid on day 1 (surplus is uncapped)
     expect(row.paidCount).toBe(2);
     expect(row.totalPaid).toBe(50000);
     expect(row.totalTarget).toBe(50000);
     expect(row.remaining).toBe(0);
+    expect(row.setoranArrears).toBe(0);
     expect(row.status).toBe('lunas');
     expect(row.lastPlate).toBe(PLATE_A_NORM);
   });
 
-  it('recap returns the derived per-installment history', async () => {
+  it('recap returns the derived ledger with obligation and running totals', async () => {
     const res = await agentA
       .get(`/partner/portal/deposit-installments/${ruleId}/recap`)
       .expect(200);
@@ -177,9 +178,17 @@ describe('deposit installments (cicilan deposit)', () => {
       installments: Array<Record<string, unknown>>;
     };
     expect(rule.id).toBe(ruleId);
+    // lunas on day 1 → the ledger stops there
     expect(installments).toEqual([
-      { seq: 1, date: `${YEAR}-03-01`, amount: 25000, dailySetoran: 150000 },
-      { seq: 2, date: `${YEAR}-03-02`, amount: 25000, dailySetoran: 100000 },
+      {
+        seq: 1,
+        date: `${YEAR}-03-01`,
+        dailySetoran: 150000,
+        obligation: 100000,
+        amount: 50000,
+        paidCumulative: 50000,
+        arrearsAfter: 0,
+      },
     ]);
   });
 
@@ -196,26 +205,43 @@ describe('deposit installments (cicilan deposit)', () => {
     expect(none.body.meta.total).toBe(0);
   });
 
-  it('update recomputes the derivation (raising the gate drops a day)', async () => {
+  it('update recomputes the ledger: short days compound arrears until a big day settles them', async () => {
     const res = await agentA
       .put(`/partner/portal/deposit-installments/${ruleId}`)
       .send({
         title: 'Cicilan Deposit Budi',
         driverName: DRIVER,
         installmentAmount: 25000,
-        installmentCount: 2,
-        minDailySetoran: 120000, // only days 1 (150k) and 4 (200k) qualify now
+        installmentCount: 2, // total 50.000
+        minDailySetoran: 120000,
         effectiveDate: `${YEAR}-0${MONTH}-01`,
       })
       .expect(200);
+    // d1 150.000: surplus 30.000 → pay 30.000
+    // d2 100.000 < 120.000: pay 0, arrears 20.000
+    // d3  99.999 < 140.000: pay 0, arrears 40.001
+    // d4 200.000 vs obligation 160.001: surplus 39.999 → pay remaining 20.000 → lunas
     const row = res.body.data as Record<string, unknown>;
+    expect(row.totalPaid).toBe(50000);
     expect(row.paidCount).toBe(2);
+    expect(row.setoranArrears).toBe(0);
     expect(row.status).toBe('lunas');
     const recap = await agentA
       .get(`/partner/portal/deposit-installments/${ruleId}/recap`)
       .expect(200);
-    expect((recap.body.data.installments as Array<{ date: string }>).map((i) => i.date)).toEqual([
+    const ledger = recap.body.data.installments as Array<{
+      date: string;
+      obligation: number;
+      amount: number;
+      arrearsAfter: number;
+    }>;
+    expect(ledger.map((i) => i.amount)).toEqual([30000, 0, 0, 20000]);
+    expect(ledger.map((i) => i.arrearsAfter)).toEqual([0, 20000, 40001, 0]);
+    expect(ledger[3]!.obligation).toBe(160001);
+    expect(ledger.map((i) => i.date)).toEqual([
       `${YEAR}-03-01`,
+      `${YEAR}-03-02`,
+      `${YEAR}-03-03`,
       `${YEAR}-03-04`,
     ]);
   });
