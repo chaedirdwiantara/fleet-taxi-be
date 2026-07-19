@@ -12,7 +12,7 @@ import { PoliciesGuard } from '../common/guards/policies.guard';
 import { SessionGuard } from '../common/guards/session.guard';
 import { parsePeriod, toStringArray } from '../common/util/period';
 import { GrabGridService } from './grab-grid.service';
-import { toGrabDriverDetail, toGrabGrid, toGrabPerformers } from './grab-presenter';
+import { toGrabDriverDetail, toGrabGrid, toGrabPerformers, toGrabSummary } from './grab-presenter';
 
 @ApiTags('admin-fleet-grab')
 @ApiCookieAuth('session')
@@ -40,6 +40,27 @@ export class GrabController {
       plate,
     });
     return toGrabGrid(result);
+  }
+
+  @Get('summary')
+  @CheckPolicies((a) => a.can('read', 'GrabImport'))
+  @ApiOperation({ summary: 'Dashboard summary — cards + daily/by-partner charts' })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
+  @ApiQuery({ name: 'rentalPartner', required: false, isArray: true, type: String })
+  async summary(
+    @Query('month') month: string,
+    @Query('year') year: string,
+    @Query('rentalPartner') rentalPartner?: string | string[],
+  ) {
+    const period = parsePeriod(month, year);
+    const [result, lastImportDate] = await Promise.all([
+      this.gridService.buildGrid(period.month, period.year, {
+        rentalPartners: toStringArray(rentalPartner),
+      }),
+      this.gridService.lastImportDate(period.month, period.year),
+    ]);
+    return toGrabSummary(result, lastImportDate);
   }
 
   @Get('cell')

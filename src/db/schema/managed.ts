@@ -12,5 +12,6 @@ export * from './partner-plates';
 export * from './checkpoints';
 export * from './rentals';
 
+export * from './activity-log';
 export * from './drivers';
 export * from './deposit-installments';

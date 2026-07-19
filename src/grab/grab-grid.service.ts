@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { normalizePlate } from '../common/util/plate';
 import { byteCompare } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
-import { grabImportDetails, grabTargets } from '../db/schema';
+import { grabImportDetails, grabImports, grabTargets } from '../db/schema';
 import { fetchRegisteredPartnerNames } from '../fleet/registered-partner-names';
 
 export interface GrabVehicleRow {
@@ -53,6 +53,23 @@ export interface GrabGridResult {
 @Injectable()
 export class GrabGridService {
   constructor(private readonly database: DatabaseService) {}
+
+  /** Newest completed import for the period — the dashboard's "data terakhir" subtitle. */
+  async lastImportDate(month: number, year: number): Promise<string | null> {
+    const [row] = await this.database.db
+      .select({ createdAt: grabImports.createdAt })
+      .from(grabImports)
+      .where(
+        and(
+          eq(grabImports.periodMonth, month),
+          eq(grabImports.periodYear, year),
+          eq(grabImports.status, 'done'),
+        ),
+      )
+      .orderBy(desc(grabImports.createdAt))
+      .limit(1);
+    return row ? row.createdAt.toISOString() : null;
+  }
 
   async buildGrid(
     month: number,

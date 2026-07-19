@@ -121,6 +121,65 @@ export function toGrabDriverDetail(v: GrabVehicleRow): GrabDriverDetailDto {
   };
 }
 
+// ---- dashboard summary (cards + charts) -------------------------------------
+
+export interface GrabSummaryDto {
+  globalSummary: {
+    totalEarning: number;
+    totalDriverFare: number;
+    totalIncentive: number;
+    totalRides: number;
+    activeVehicles: number;
+  };
+  // Shape deliberately matches FleetChartsDto so the FE chart panel is reused.
+  charts: {
+    daily: { day: number; total: number }[];
+    byPartner: { partner: string; total: number }[];
+  };
+  // Computed over the UNFILTERED pivot so options don't disappear when filtered.
+  availableRentalPartners: string[];
+  lastImportDate: string | null;
+}
+
+const NO_RENTAL_PARTNER = 'Tanpa Rental Partner';
+
+export function toGrabSummary(
+  result: GrabGridResult,
+  lastImportDate: string | null,
+): GrabSummaryDto {
+  const dailyTotals: Record<number, number> = {};
+  const byPartnerMap = new Map<string, number>();
+  let totalRides = 0;
+  for (const row of result.rows) {
+    for (const [d, earning] of Object.entries(row.dailyData)) {
+      dailyTotals[Number(d)] = (dailyTotals[Number(d)] ?? 0) + earning;
+    }
+    const partner = row.rentalPartner || NO_RENTAL_PARTNER;
+    byPartnerMap.set(partner, (byPartnerMap.get(partner) ?? 0) + row.totalEarningCollected);
+    totalRides += row.totalRides;
+  }
+  const daily = Array.from({ length: result.daysInMonth }, (_, i) => ({
+    day: i + 1,
+    total: dailyTotals[i + 1] ?? 0,
+  }));
+  const byPartner = [...byPartnerMap.entries()]
+    .map(([partner, total]) => ({ partner, total }))
+    .sort((a, b) => b.total - a.total);
+
+  return {
+    globalSummary: {
+      totalEarning: result.totalEarnings,
+      totalDriverFare: result.totalDriverFare,
+      totalIncentive: result.totalIncentives,
+      totalRides,
+      activeVehicles: result.rows.length,
+    },
+    charts: { daily, byPartner },
+    availableRentalPartners: result.availableRentalPartners,
+    lastImportDate,
+  };
+}
+
 /** Top/bottom 10 by total earning collected (legacy performers panel). */
 export function toGrabPerformers(rows: GrabVehicleRow[]): PerformersDto {
   const sorted = [...rows].sort((a, b) => b.totalEarningCollected - a.totalEarningCollected);

@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
+import { ACTIVITY_ACTIONS, ActivityLogService } from '../activity-log/activity-log.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SessionGuard } from '../common/guards/session.guard';
 import { AuthService } from './auth.service';
@@ -27,16 +28,38 @@ function requireAdmin(user: SessionUser): void {
 @ApiTags('admin-auth')
 @Controller('admin/auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly activityLog: ActivityLogService,
+  ) {}
 
   @Post('login')
   @HttpCode(200)
   @ApiOperation({ summary: 'Admin login — sets the session cookie (admin audience only)' })
   async login(@Body() dto: LoginDto, @Req() req: Request): Promise<SessionUser> {
-    const user = await this.authService.validateCredentials(dto.email, dto.password);
-    // Same message as bad credentials: don't reveal that a non-admin account exists.
-    if (!user.roles.includes('admin') && !user.roles.includes('super_admin')) {
-      throw new UnauthorizedException('Invalid credentials');
+    let user: SessionUser;
+    try {
+      user = await this.authService.validateCredentials(dto.email, dto.password);
+      // Same message as bad credentials: don't reveal that a non-admin account exists.
+      if (!user.roles.includes('admin') && !user.roles.includes('super_admin')) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+    } catch (err) {
+      // Failed logins are the highest-value audit signal; only the attempted
+      // email is stored — never the password.
+      this.activityLog.record({
+        audience: 'admin',
+        actorId: null,
+        actorEmail: dto.email,
+        action: ACTIVITY_ACTIONS.loginFailure,
+        method: 'POST',
+        path: req.path,
+        status: 'failure',
+        statusCode: 401,
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+      throw err;
     }
     // Regenerate to prevent session fixation, but carry any coexisting partner
     // session across so an admin login doesn't log the partner out.
@@ -48,6 +71,19 @@ export class AuthController {
     }
     req.session.adminUser = user;
     req.session.adminLoginAt = Date.now();
+    this.activityLog.record({
+      audience: 'admin',
+      actorId: user.id,
+      actorEmail: user.email,
+      actorName: user.fullName,
+      action: ACTIVITY_ACTIONS.loginSuccess,
+      method: 'POST',
+      path: req.path,
+      status: 'success',
+      statusCode: 200,
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    });
     return user;
   }
 
@@ -57,6 +93,22 @@ export class AuthController {
   @ApiCookieAuth('session')
   @ApiOperation({ summary: 'Log out of the admin audience (keeps a partner session)' })
   async logout(@Req() req: Request): Promise<{ loggedOut: true }> {
+    const user = req.session.adminUser;
+    if (user) {
+      this.activityLog.record({
+        audience: 'admin',
+        actorId: user.id,
+        actorEmail: user.email,
+        actorName: user.fullName,
+        action: ACTIVITY_ACTIONS.logout,
+        method: 'POST',
+        path: req.path,
+        status: 'success',
+        statusCode: 200,
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+    }
     delete req.session.adminUser;
     delete req.session.adminLoginAt;
     // Only tear the whole session down if no partner session remains.
