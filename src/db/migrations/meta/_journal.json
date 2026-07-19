@@ -71,6 +71,13 @@
       "when": 1783993093321,
       "tag": "0009_worried_katie_power",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784450023347,
+      "tag": "0010_greedy_silverclaw",
+      "breakpoints": true
     }
   ]
 }
