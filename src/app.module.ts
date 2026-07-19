@@ -19,6 +19,7 @@ import { PartnerApiModule } from './partner-api/partner-api.module';
 import { PartnerDriversModule } from './partner-drivers/partner-drivers.module';
 import { PartnerPortalModule } from './partner-portal/partner-portal.module';
 import { PartnerRentalsModule } from './partner-rentals/partner-rentals.module';
+import { DepositInstallmentsModule } from './deposit-installments/deposit-installments.module';
 import { PartnersModule } from './partners/partners.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { UsersModule } from './users/users.module';
@@ -56,6 +57,7 @@ import { UsersModule } from './users/users.module';
     GrabModule,
     PartnerPortalModule,
     PartnerRentalsModule,
+    DepositInstallmentsModule,
     PartnerDriversModule,
     PartnerApiModule,
   ],

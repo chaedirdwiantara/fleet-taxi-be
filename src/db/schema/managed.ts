@@ -13,3 +13,4 @@ export * from './checkpoints';
 export * from './rentals';
 
 export * from './drivers';
+export * from './deposit-installments';

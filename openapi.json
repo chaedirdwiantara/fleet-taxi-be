@@ -2365,221 +2365,6 @@
         ]
       }
     },
-    "/partner/portal/debt-summary": {
-      "get": {
-        "operationId": "PortalDebtController_list",
-        "parameters": [
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "example": 1,
-              "type": "string"
-            }
-          },
-          {
-            "name": "pageSize",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "example": 10,
-              "type": "string"
-            }
-          },
-          {
-            "name": "status",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "enum": [
-                "aktif",
-                "nonaktif"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "name": "cabang",
-            "required": false,
-            "in": "query",
-            "description": "Exact cabang from /debt-summary/filters",
-            "schema": {}
-          },
-          {
-            "name": "koordinator",
-            "required": false,
-            "in": "query",
-            "description": "Exact koordinator from /debt-summary/filters",
-            "schema": {}
-          },
-          {
-            "name": "search",
-            "required": false,
-            "in": "query",
-            "description": "Substring on driver name or plate",
-            "schema": {}
-          },
-          {
-            "name": "sortBy",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "enum": [
-                "driverName",
-                "cabang",
-                "koordinator",
-                "depositTerbayar",
-                "tagihanSetoran",
-                "totalTagihan",
-                "selisihDeposit"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "name": "sortOrder",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "enum": [
-                "asc",
-                "desc"
-              ],
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "summary": "Own debt summary per driver (scoped to registered plates)",
-        "tags": [
-          "partner-portal"
-        ]
-      }
-    },
-    "/partner/portal/debt-summary/filters": {
-      "get": {
-        "operationId": "PortalDebtController_filters",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "summary": "Dropdown options (cabang, koordinator) for the debt summary",
-        "tags": [
-          "partner-portal"
-        ]
-      }
-    },
-    "/partner/portal/debt-summary/export": {
-      "get": {
-        "operationId": "PortalDebtController_export",
-        "parameters": [
-          {
-            "name": "format",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "enum": [
-                "xlsx"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "name": "status",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "enum": [
-                "aktif",
-                "nonaktif"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "name": "cabang",
-            "required": false,
-            "in": "query",
-            "description": "Exact cabang from /debt-summary/filters",
-            "schema": {}
-          },
-          {
-            "name": "koordinator",
-            "required": false,
-            "in": "query",
-            "description": "Exact koordinator from /debt-summary/filters",
-            "schema": {}
-          },
-          {
-            "name": "search",
-            "required": false,
-            "in": "query",
-            "description": "Substring on driver name or plate",
-            "schema": {}
-          },
-          {
-            "name": "sortBy",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "enum": [
-                "driverName",
-                "cabang",
-                "koordinator",
-                "depositTerbayar",
-                "tagihanSetoran",
-                "totalTagihan",
-                "selisihDeposit"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "name": "sortOrder",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "enum": [
-                "asc",
-                "desc"
-              ],
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "summary": "Export the filtered debt summary (?format=xlsx)",
-        "tags": [
-          "partner-portal"
-        ]
-      }
-    },
     "/partner/portal/rentals/cogs-defaults": {
       "get": {
         "operationId": "PartnerRentalsController_listCogsDefaults",
@@ -2940,6 +2725,238 @@
           }
         ],
         "summary": "Toggle Belum/Sudah Dibayar on one own rental",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/deposit-installments/driver-options": {
+      "get": {
+        "operationId": "DepositInstallmentsController_driverOptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Distinct driver names on own plates (feeds the driver picker)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/deposit-installments": {
+      "get": {
+        "operationId": "DepositInstallmentsController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 10,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "berjalan",
+                "lunas"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Substring on title/driver/plate",
+            "schema": {}
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "title",
+                "createdAt",
+                "effectiveDate",
+                "driverName",
+                "installmentAmount",
+                "installmentCount",
+                "totalTarget",
+                "totalPaid",
+                "remaining"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Own cicilan-deposit rules with derived payment progress",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "post": {
+        "operationId": "DepositInstallmentsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDepositInstallmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create a cicilan-deposit rule",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/deposit-installments/{id}": {
+      "put": {
+        "operationId": "DepositInstallmentsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDepositInstallmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Edit one own cicilan-deposit rule",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "delete": {
+        "operationId": "DepositInstallmentsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete one own cicilan-deposit rule",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/deposit-installments/{id}/recap": {
+      "get": {
+        "operationId": "DepositInstallmentsController_recap",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Rekap: derived installment history of one own rule",
         "tags": [
           "partner-portal"
         ]
@@ -3997,6 +4014,51 @@
         },
         "required": [
           "paymentStatus"
+        ]
+      },
+      "CreateDepositInstallmentDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "example": "Cicilan Deposit Driver Halim"
+          },
+          "driverName": {
+            "type": "string",
+            "example": "YULIUS BAMBANG TRIUTOMO",
+            "description": "From /driver-options"
+          },
+          "installmentAmount": {
+            "type": "number",
+            "example": 25000,
+            "description": "Integer rupiah per cicilan"
+          },
+          "installmentCount": {
+            "type": "number",
+            "example": 20,
+            "description": "Durasi: jumlah cicilan (Nx)"
+          },
+          "minDailySetoran": {
+            "type": "number",
+            "example": 100000,
+            "description": "Cicilan hanya berlaku pada hari aktif dengan setoran >= nilai ini (inklusif). Kosong = semua hari aktif."
+          },
+          "effectiveDate": {
+            "type": "string",
+            "example": "2026-07-01",
+            "description": "YYYY-MM-DD, tanggal mulai berlaku"
+          },
+          "note": {
+            "type": "string",
+            "example": "Deposit 500.000"
+          }
+        },
+        "required": [
+          "title",
+          "driverName",
+          "installmentAmount",
+          "installmentCount",
+          "effectiveDate"
         ]
       },
       "PresignDriverDocumentDto": {
