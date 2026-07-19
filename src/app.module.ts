@@ -4,6 +4,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
+import { ActivityLogInterceptor } from './activity-log/activity-log.interceptor';
+import { ActivityLogModule } from './activity-log/activity-log.module';
 import { AuthModule } from './auth/auth.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseEnvelopeInterceptor } from './common/interceptors/response-envelope.interceptor';
@@ -49,6 +51,7 @@ import { UsersModule } from './users/users.module';
     DrizzleModule,
     HealthModule,
     UsersModule,
+    ActivityLogModule,
     AuthModule,
     PartnersModule,
     RealtimeModule,
@@ -63,6 +66,7 @@ import { UsersModule } from './users/users.module';
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: ResponseEnvelopeInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: ActivityLogInterceptor },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })

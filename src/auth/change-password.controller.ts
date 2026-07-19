@@ -1,6 +1,7 @@
 import { Body, Controller, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
+import { ACTIVITY_ACTIONS, ActivityLogService } from '../activity-log/activity-log.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SessionGuard } from '../common/guards/session.guard';
 import { AuthService } from './auth.service';
@@ -17,7 +18,10 @@ import { SessionUser } from './session.types';
 @UseGuards(SessionGuard)
 @Controller('auth')
 export class ChangePasswordController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly activityLog: ActivityLogService,
+  ) {}
 
   @Post('change-password')
   @HttpCode(200)
@@ -38,6 +42,20 @@ export class ChangePasswordController {
     // whichever audience slot holds this account (admin or partner).
     if (req.session.adminUser?.id === updated.id) req.session.adminUser = updated;
     if (req.session.partnerUser?.id === updated.id) req.session.partnerUser = updated;
+    this.activityLog.record({
+      audience: updated.partnerId != null ? 'partner' : 'admin',
+      actorId: updated.id,
+      actorEmail: updated.email,
+      actorName: updated.fullName,
+      partnerId: updated.partnerId,
+      action: ACTIVITY_ACTIONS.passwordChange,
+      method: 'POST',
+      path: req.path,
+      status: 'success',
+      statusCode: 200,
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    });
     return updated;
   }
 }

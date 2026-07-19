@@ -18,6 +18,9 @@ export type SubjectName =
   | 'Partner'
   | 'User'
   | 'ApiKey'
+  // Only super_admin's blanket `manage all` grants this — the audit log is
+  // deliberately invisible to plain admins.
+  | 'ActivityLog'
   | 'all';
 
 export type AppAbility = MongoAbility<[Action, SubjectName | Record<string, unknown>]>;

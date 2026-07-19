@@ -163,6 +163,112 @@
         ]
       }
     },
+    "/admin/activity-logs": {
+      "get": {
+        "operationId": "AdminActivityLogsController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 50,
+              "type": "string"
+            }
+          },
+          {
+            "name": "audience",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "partner"
+              ]
+            }
+          },
+          {
+            "name": "actor",
+            "required": false,
+            "in": "query",
+            "description": "Filter by actor email (substring match)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "auth.login.success",
+                "auth.login.failure",
+                "auth.logout",
+                "auth.password_change",
+                "mutation.create",
+                "mutation.update",
+                "mutation.delete"
+              ]
+            }
+          },
+          {
+            "name": "dateFrom",
+            "required": false,
+            "in": "query",
+            "description": "Inclusive lower bound (ISO date)",
+            "schema": {
+              "example": "2026-07-01",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "required": false,
+            "in": "query",
+            "description": "Inclusive upper bound (ISO date)",
+            "schema": {
+              "example": "2026-07-31",
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Free-text search over actor email, path, and resource",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Activity log of all accounts — admin console + partner portal (super_admin only)",
+        "tags": [
+          "admin-activity-logs"
+        ]
+      }
+    },
     "/admin/auth/login": {
       "post": {
         "operationId": "AuthController_login",
@@ -1082,6 +1188,56 @@
           }
         ],
         "summary": "31-day earnings pivot grid (composite key plate|city|driver)",
+        "tags": [
+          "admin-fleet-grab"
+        ]
+      }
+    },
+    "/admin/fleet/grab/summary": {
+      "get": {
+        "operationId": "GrabController_summary",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "number"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "number"
+            }
+          },
+          {
+            "name": "rentalPartner",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Dashboard summary — cards + daily/by-partner charts",
         "tags": [
           "admin-fleet-grab"
         ]

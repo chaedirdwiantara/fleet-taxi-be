@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { ApiCookieAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
+import { ACTIVITY_ACTIONS, ActivityLogService } from '../activity-log/activity-log.service';
 import { AuthService } from '../auth/auth.service';
 import { LoginDto } from '../auth/dto/login.dto';
 import { destroySession, regenerateSession, saveSession } from '../auth/session-ops';
@@ -33,16 +34,35 @@ export class PortalController {
     private readonly authService: AuthService,
     private readonly ordersService: PortalOrdersService,
     private readonly exportService: PortalExportService,
+    private readonly activityLog: ActivityLogService,
   ) {}
 
   @Post('login')
   @HttpCode(200)
   @ApiOperation({ summary: 'Partner portal login — sets the session cookie' })
   async login(@Body() dto: LoginDto, @Req() req: Request): Promise<SessionUser> {
-    const user = await this.authService.validateCredentials(dto.email, dto.password);
-    // Same message as bad credentials: don't reveal that the account exists
-    if (!user.roles.includes('partner') || user.partnerId == null) {
-      throw new UnauthorizedException('Invalid credentials');
+    let user: SessionUser;
+    try {
+      user = await this.authService.validateCredentials(dto.email, dto.password);
+      // Same message as bad credentials: don't reveal that the account exists
+      if (!user.roles.includes('partner') || user.partnerId == null) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+    } catch (err) {
+      // Audit trail: attempted email only — never the password.
+      this.activityLog.record({
+        audience: 'partner',
+        actorId: null,
+        actorEmail: dto.email,
+        action: ACTIVITY_ACTIONS.loginFailure,
+        method: 'POST',
+        path: req.path,
+        status: 'failure',
+        statusCode: 401,
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+      throw err;
     }
     // Regenerate against fixation, but carry any coexisting admin session across
     // so a partner login doesn't log the admin out.
@@ -54,6 +74,20 @@ export class PortalController {
     }
     req.session.partnerUser = user;
     req.session.partnerLoginAt = Date.now();
+    this.activityLog.record({
+      audience: 'partner',
+      actorId: user.id,
+      actorEmail: user.email,
+      actorName: user.fullName,
+      partnerId: user.partnerId,
+      action: ACTIVITY_ACTIONS.loginSuccess,
+      method: 'POST',
+      path: req.path,
+      status: 'success',
+      statusCode: 200,
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    });
     return user;
   }
 
@@ -62,6 +96,23 @@ export class PortalController {
   @UseGuards(SessionGuard)
   @ApiCookieAuth('session')
   async logout(@Req() req: Request): Promise<{ loggedOut: true }> {
+    const user = req.session.partnerUser;
+    if (user) {
+      this.activityLog.record({
+        audience: 'partner',
+        actorId: user.id,
+        actorEmail: user.email,
+        actorName: user.fullName,
+        partnerId: user.partnerId,
+        action: ACTIVITY_ACTIONS.logout,
+        method: 'POST',
+        path: req.path,
+        status: 'success',
+        statusCode: 200,
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+    }
     delete req.session.partnerUser;
     delete req.session.partnerLoginAt;
     if (req.session.adminUser) {
