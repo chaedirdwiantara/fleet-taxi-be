@@ -12,7 +12,7 @@ import { PoliciesGuard } from '../common/guards/policies.guard';
 import { SessionGuard } from '../common/guards/session.guard';
 import { parsePeriod, toStringArray } from '../common/util/period';
 import { GrabGridService } from './grab-grid.service';
-import { toGrabDriverDetail, toGrabGrid, toGrabPerformers, toGrabSummary } from './grab-presenter';
+import { toGrabDriverDetail, toGrabGrid, toGrabSummary } from './grab-presenter';
 
 @ApiTags('admin-fleet-grab')
 @ApiCookieAuth('session')
@@ -80,16 +80,5 @@ export class GrabController {
     const row = await this.gridService.findRow(period.month, period.year, compositeKey);
     if (!row) throw new NotFoundException('No data for that key');
     return toGrabDriverDetail(row);
-  }
-
-  @Get('performers')
-  @CheckPolicies((a) => a.can('read', 'GrabImport'))
-  @ApiOperation({ summary: 'Top/bottom 10 by total earning collected' })
-  @ApiQuery({ name: 'month', type: Number, example: 7 })
-  @ApiQuery({ name: 'year', type: Number, example: 2026 })
-  async performers(@Query('month') month: string, @Query('year') year: string) {
-    const period = parsePeriod(month, year);
-    const grid = await this.gridService.buildGrid(period.month, period.year);
-    return toGrabPerformers(grid.rows);
   }
 }

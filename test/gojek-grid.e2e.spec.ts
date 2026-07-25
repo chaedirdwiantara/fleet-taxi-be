@@ -497,6 +497,46 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     // G7771KA (980000) + G7772KB (300000); G7773KC (250000) and the unplated
     // manual payment (75000) are outside the table, so outside the summary too
     expect(res.body.data.globalSummary.totalDeduction).toBe(1_280_000);
+    // no Tanggal filter sent -> no dayFilter block
+    expect(res.body.data.dayFilter).toBeUndefined();
+  });
+
+  it('admin summary with a Tanggal cutoff emits dayFilter without touching globalSummary', async () => {
+    const whole = await agent
+      .get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}`)
+      .expect(200);
+    const daysInMonth = new Date(Date.UTC(YEAR, MONTH, 0)).getUTCDate();
+
+    const res = await agent
+      .get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&day=7`)
+      .expect(200);
+    // whole-month fields are byte-identical to the un-filtered call
+    expect(res.body.data.globalSummary).toEqual(whole.body.data.globalSummary);
+    expect(res.body.data.charts).toEqual(whole.body.data.charts);
+
+    const dayFilter = res.body.data.dayFilter;
+    expect(dayFilter.day).toBe(7);
+    // cumulative setoran = Σ charts.daily[1..7]; selectedDay = day 7's bucket
+    const daily = whole.body.data.charts.daily as Array<{ day: number; total: number }>;
+    const cumTo7 = daily.filter((d) => d.day <= 7).reduce((s, d) => s + d.total, 0);
+    expect(dayFilter.cumulative.totalDeduction).toBe(cumTo7);
+    expect(dayFilter.selectedDay.totalDeduction).toBe(daily.find((d) => d.day === 7)!.total);
+
+    // invariant: at day === daysInMonth the cumulative block equals globalSummary
+    const full = await agent
+      .get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&day=${daysInMonth}`)
+      .expect(200);
+    const g = whole.body.data.globalSummary;
+    expect(full.body.data.dayFilter.cumulative).toEqual({
+      totalDeduction: g.totalDeduction,
+      totalDue: g.totalDue,
+      totalOutstanding: g.totalOutstanding,
+      totalOutstandingMonth: g.totalOutstandingMonth,
+    });
+
+    // garbage day is rejected, out-of-range-but-valid-int day is ignored upstream
+    await agent.get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&day=abc`).expect(400);
+    await agent.get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&day=0`).expect(400);
   });
 
   it('admin cell 404s for a plate no partner registered (HTTP)', async () => {

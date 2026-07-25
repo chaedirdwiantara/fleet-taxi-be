@@ -129,20 +129,15 @@ export class GojekController {
   ) {
     const period = parsePeriod(month, year);
     const day = dayRaw ? Number(dayRaw) : undefined;
+    if (day !== undefined && (!Number.isInteger(day) || day < 1 || day > 31)) {
+      throw new BadRequestException('day must be an integer 1..31');
+    }
     return this.adminFleet.gojekSummary(
       period.month,
       period.year,
       day,
       toStringArray(rentalPartner),
     );
-  }
-
-  @Get('performers')
-  @CheckPolicies((a) => a.can('read', 'FleetImport'))
-  @ApiOperation({ summary: 'Top/bottom 10 drivers by outstanding' })
-  async performers(@Query('month') month: string, @Query('year') year: string) {
-    const period = parsePeriod(month, year);
-    return this.adminFleet.gojekPerformers(period.month, period.year);
   }
 
   @Get('exceptions')
