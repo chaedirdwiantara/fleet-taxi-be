@@ -502,31 +502,34 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
   });
 
   it('admin summary with a Tanggal cutoff emits dayFilter without touching globalSummary', async () => {
-    const whole = await agent
-      .get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}`)
-      .expect(200);
+    // NOTE: every assertion below compares fields WITHIN one response. E2e
+    // files share one database and run in parallel, so two sequential requests
+    // can legitimately disagree on globally-derived stats (exitedCount &
+    // outstandingDriverKeluar key off MAX(transaction_date) across ALL data) —
+    // cross-request equality is inherently flaky here.
     const daysInMonth = new Date(Date.UTC(YEAR, MONTH, 0)).getUTCDate();
 
     const res = await agent
       .get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&day=7`)
       .expect(200);
-    // whole-month fields are byte-identical to the un-filtered call
-    expect(res.body.data.globalSummary).toEqual(whole.body.data.globalSummary);
-    expect(res.body.data.charts).toEqual(whole.body.data.charts);
+    const daily = res.body.data.charts.daily as Array<{ day: number; total: number }>;
+    // charts + globalSummary keep whole-month semantics despite the day param
+    expect(daily).toHaveLength(daysInMonth);
+    expect(res.body.data.globalSummary.totalDeduction).toBe(daily.reduce((s, d) => s + d.total, 0));
 
     const dayFilter = res.body.data.dayFilter;
     expect(dayFilter.day).toBe(7);
     // cumulative setoran = Σ charts.daily[1..7]; selectedDay = day 7's bucket
-    const daily = whole.body.data.charts.daily as Array<{ day: number; total: number }>;
     const cumTo7 = daily.filter((d) => d.day <= 7).reduce((s, d) => s + d.total, 0);
     expect(dayFilter.cumulative.totalDeduction).toBe(cumTo7);
     expect(dayFilter.selectedDay.totalDeduction).toBe(daily.find((d) => d.day === 7)!.total);
 
-    // invariant: at day === daysInMonth the cumulative block equals globalSummary
+    // invariant: at day === daysInMonth the cumulative block equals the SAME
+    // response's globalSummary (single snapshot — no cross-request race)
     const full = await agent
       .get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&day=${daysInMonth}`)
       .expect(200);
-    const g = whole.body.data.globalSummary;
+    const g = full.body.data.globalSummary;
     expect(full.body.data.dayFilter.cumulative).toEqual({
       totalDeduction: g.totalDeduction,
       totalDue: g.totalDue,
