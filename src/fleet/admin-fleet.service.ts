@@ -4,11 +4,9 @@ import {
   toCellBreakdown,
   toFleetGrid,
   toGojekSummary,
-  toPerformers,
   type CellBreakdownDto,
   type FleetGridDto,
   type GojekSummaryDto,
-  type PerformersDto,
 } from './fleet-presenter';
 import { GojekGridService } from './gojek-grid.service';
 
@@ -75,16 +73,8 @@ export class AdminFleetService {
       scopePlates: norms,
       partnerNameByNorm,
       rentalPartners,
+      day,
     });
     return toGojekSummary(result, day);
-  }
-
-  async gojekPerformers(month: number, year: number): Promise<PerformersDto> {
-    const { norms } = await this.registeredPlates.unionScope();
-    const grid = await this.gojek.buildGrid(month, year, { scopePlates: norms });
-    return toPerformers({
-      topPerformers: grid.topPerformers,
-      bottomPerformers: grid.bottomPerformers,
-    });
   }
 }

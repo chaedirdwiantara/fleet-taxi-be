@@ -9,7 +9,6 @@ import type { DueSegment } from './due-segments';
 import {
   DailyDetailBucket,
   GojekGridResult,
-  GojekPerformer,
   GojekVehicleRow,
   NO_RENTAL_PARTNER,
 } from './gojek-grid.types';
@@ -114,18 +113,6 @@ export interface FleetGridDto {
   availablePlates: { plate: string; type: string }[];
 }
 
-export interface PerformerDto {
-  key: string;
-  driverName: string;
-  vehicle: string;
-  totalDeduction: number;
-  outstanding: number;
-}
-export interface PerformersDto {
-  top: PerformerDto[];
-  bottom: PerformerDto[];
-}
-
 export interface GlobalSummaryDto {
   totalDeduction: number;
   totalDue: number;
@@ -161,8 +148,28 @@ export interface ExitedDriverDto {
   outstanding: number;
 }
 
+// Tanggal filter aggregates — emitted only when the request carried a valid
+// `day`. `cumulative` mirrors GlobalSummaryDto's semantics truncated at that
+// day (at day === daysInMonth it equals globalSummary exactly); `selectedDay`
+// is that single day's counted setoran.
+export interface DayFilterSummaryDto {
+  day: number;
+  cumulative: {
+    totalDeduction: number;
+    totalDue: number;
+    totalOutstanding: number;
+    totalOutstandingMonth: number;
+  };
+  selectedDay: {
+    totalDeduction: number;
+  };
+}
+
 export interface GojekSummaryDto {
   globalSummary: GlobalSummaryDto;
+  // Present only when the request sent a valid `day` (Tanggal filter); all
+  // other fields keep their whole-month semantics regardless.
+  dayFilter?: DayFilterSummaryDto;
   driverActivity: DriverActivityDto;
   charts: FleetChartsDto;
   // Filter options for the dashboard's rental-partner select — computed over
@@ -292,20 +299,6 @@ export function toFleetGrid(result: GojekGridResult): FleetGridDto {
   };
 }
 
-export function toPerformers(p: {
-  topPerformers: GojekPerformer[];
-  bottomPerformers: GojekPerformer[];
-}): PerformersDto {
-  const toDto = (x: GojekPerformer): PerformerDto => ({
-    key: x.vehicle || x.driverName,
-    driverName: x.driverName,
-    vehicle: x.vehicle,
-    totalDeduction: x.totalDeduction,
-    outstanding: x.outstanding,
-  });
-  return { top: p.topPerformers.map(toDto), bottom: p.bottomPerformers.map(toDto) };
-}
-
 // ---- dashboard summary (cards + driver activity + charts) -------------------
 
 function toGlobalSummary(result: GojekGridResult): GlobalSummaryDto {
@@ -333,6 +326,43 @@ function toCharts(result: GojekGridResult): FleetChartsDto {
     .map(([partner, total]) => ({ partner, total }))
     .sort((a, b) => b.total - a.total);
   return { daily, byPartner };
+}
+
+// Day-truncated calculatedTarget for one row: the line-of-business formula
+// (dailyTarget × billable days) with the window cut at `day`. Bebas-setoran
+// days inside [minDay..day] shrink the target exactly like the full-month
+// exceptionDaysFreeCount does, so at day === daysInMonth this reduces to
+// row.calculatedTarget.
+function rowDueToDay(row: GojekVehicleRow, day: number): number {
+  if (day < row.minDay) return 0;
+  let freeDays = 0;
+  for (const [d, exc] of Object.entries(row.exceptions)) {
+    const dayNum = Number(d);
+    if (exc.isBebasSetoran && dayNum >= row.minDay && dayNum <= day) freeDays++;
+  }
+  const targetDays = Math.max(0, day - row.minDay + 1 - freeDays);
+  return row.dailyTarget * targetDays;
+}
+
+function toDayFilterSummary(result: GojekGridResult): DayFilterSummaryDto | undefined {
+  const cutoff = result.dayCutoff;
+  if (!cutoff) return undefined;
+  const { day } = cutoff;
+  let totalDeduction = 0;
+  for (let d = 1; d <= day; d++) totalDeduction += result.dailyTotals[d] ?? 0;
+  const totalDue = result.rows.reduce((sum, row) => sum + rowDueToDay(row, day), 0);
+  return {
+    day,
+    cumulative: {
+      totalDeduction,
+      totalDue,
+      totalOutstanding: cutoff.totalOutstandingToDay,
+      totalOutstandingMonth: cutoff.totalOutstandingMonthToDay,
+    },
+    selectedDay: {
+      totalDeduction: result.dailyTotals[day] ?? 0,
+    },
+  };
 }
 
 function toDriverActivity(result: GojekGridResult, day?: number): DriverActivityDto {
@@ -367,8 +397,10 @@ function toDriverActivity(result: GojekGridResult, day?: number): DriverActivity
 }
 
 export function toGojekSummary(result: GojekGridResult, day?: number): GojekSummaryDto {
+  const dayFilter = toDayFilterSummary(result);
   return {
     globalSummary: toGlobalSummary(result),
+    ...(dayFilter ? { dayFilter } : {}),
     driverActivity: toDriverActivity(result, day),
     charts: toCharts(result),
     availableRentalPartners: result.availableRentalPartners,

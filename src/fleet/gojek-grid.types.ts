@@ -60,6 +60,10 @@ export interface GojekVehicleRow {
   // The selected month's own delta: outstanding === previous-month outstanding
   // + outstandingMonth by construction.
   outstandingMonth: number;
+  // Set only when buildGrid ran with a Tanggal day cutoff: the month's due/paid
+  // slices truncated at that day (same window and exclusions as month_*).
+  monthTargetToDay?: number;
+  monthPaidToDay?: number;
   // Driver keluar: the plate stopped appearing in imports (its all-time last
   // transaction date is older than the newest import date anywhere). Reappearing
   // in a later import automatically clears the flag.
@@ -89,13 +93,6 @@ export interface ExitedDriver {
   outstanding: number;
 }
 
-export interface GojekPerformer {
-  driverName: string;
-  vehicle: string; // comma-joined plates
-  totalDeduction: number;
-  outstanding: number;
-}
-
 export interface GojekGridResult {
   month: number;
   year: number;
@@ -119,8 +116,14 @@ export interface GojekGridResult {
   lastImportDate: string | null; // newest transaction date in the data anywhere
   availableRentalPartners: string[];
   availablePlates: Array<{ plate: string; type: string }>;
-  topPerformers: GojekPerformer[];
-  bottomPerformers: GojekPerformer[];
+  // Present only when buildGrid ran with a valid Tanggal day cutoff: the
+  // outstanding totals as they stood at the end of that day (active rows only,
+  // same exited-plate partitioning as the whole-month totals above).
+  dayCutoff?: {
+    day: number;
+    totalOutstandingToDay: number;
+    totalOutstandingMonthToDay: number;
+  };
 }
 
 export const NO_RENTAL_PARTNER = '(Tanpa Rental Partner)';

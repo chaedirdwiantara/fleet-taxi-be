@@ -3,7 +3,6 @@
  * shape the frontend consumes (features/grab/types.ts). Display-only; one
  * presenter serves both the admin and the partner-portal Grab endpoints.
  */
-import type { PerformersDto } from '../fleet/fleet-presenter';
 import type { GrabGridResult, GrabVehicleRow } from './grab-grid.service';
 
 export interface GrabRowDto {
@@ -178,17 +177,4 @@ export function toGrabSummary(
     availableRentalPartners: result.availableRentalPartners,
     lastImportDate,
   };
-}
-
-/** Top/bottom 10 by total earning collected (legacy performers panel). */
-export function toGrabPerformers(rows: GrabVehicleRow[]): PerformersDto {
-  const sorted = [...rows].sort((a, b) => b.totalEarningCollected - a.totalEarningCollected);
-  const toDto = (v: GrabVehicleRow) => ({
-    key: v.key,
-    driverName: v.driverName,
-    vehicle: v.plateNumber,
-    totalDeduction: v.totalEarningCollected,
-    outstanding: 0,
-  });
-  return { top: sorted.slice(0, 10).map(toDto), bottom: sorted.slice(-10).reverse().map(toDto) };
 }

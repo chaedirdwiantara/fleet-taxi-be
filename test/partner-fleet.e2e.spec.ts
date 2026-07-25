@@ -275,6 +275,21 @@ describe('partner portal fleet monitoring (Daftarkan Plat + scoped grids)', () =
     expect(summary.body.data.globalSummary.totalDeduction).toBe(600000);
     expect(summary.body.data.driverActivity).toBeDefined();
     expect(summary.body.data.charts.daily).toHaveLength(30);
+    expect(summary.body.data.dayFilter).toBeUndefined();
+
+    // Tanggal filter: dayFilter appears, whole-month fields stay identical
+    const filtered = await a
+      .get(`/partner/portal/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&day=5`)
+      .expect(200);
+    expect(filtered.body.data.globalSummary).toEqual(summary.body.data.globalSummary);
+    expect(filtered.body.data.dayFilter.day).toBe(5);
+    const daily = summary.body.data.charts.daily as Array<{ day: number; total: number }>;
+    expect(filtered.body.data.dayFilter.cumulative.totalDeduction).toBe(
+      daily.filter((d) => d.day <= 5).reduce((s, d) => s + d.total, 0),
+    );
+    expect(filtered.body.data.dayFilter.selectedDay.totalDeduction).toBe(
+      daily.find((d) => d.day === 5)!.total,
+    );
   });
 
   it('edits a registered plate Type (PUT) and the grid overlay follows', async () => {

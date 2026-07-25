@@ -10,7 +10,6 @@ import {
   DailyDetailBucket,
   ExitedDriver,
   GojekGridResult,
-  GojekPerformer,
   GojekVehicleRow,
   NO_RENTAL_PARTNER,
   RawManualRow,
@@ -66,12 +65,26 @@ export class GojekGridService {
       // scope so they land in the rawRows queue ("Data Mentah Tanpa Plat").
       // NEVER set for partner scoping — a partner must not see unplated data.
       includeRawManual?: boolean;
+      // Day cutoff (1..daysInMonth) for the dashboard's Tanggal filter: adds
+      // dayCutoff outstanding aggregates bounded at that day. Whole-month
+      // figures are unaffected. Out-of-range values are ignored.
+      day?: number;
     } = {},
   ): Promise<GojekGridResult> {
     const { db } = this.database;
 
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    // Clamp the optional Tanggal cutoff once; everything below trusts it.
+    const dayCutoffDay =
+      filters.day !== undefined &&
+      Number.isInteger(filters.day) &&
+      filters.day >= 1 &&
+      filters.day <= daysInMonth
+        ? filters.day
+        : undefined;
+
     if (filters.scopePlates !== undefined && filters.scopePlates.length === 0) {
-      return this.emptyGrid(month, year);
+      return this.emptyGrid(month, year, dayCutoffDay);
     }
 
     const rawRows = await db
@@ -277,11 +290,9 @@ export class GojekGridService {
       ...new Set([...pivot.values()].map((v) => v.vehicle).filter((p) => p !== '')),
     ];
     const [cumulativeMap, exitStats] = await Promise.all([
-      this.fetchCumulativeStats(pivotPlates, month, year),
+      this.fetchCumulativeStats(pivotPlates, month, year, dayCutoffDay),
       this.fetchExitStats(filters.scopePlates),
     ]);
-
-    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
 
     // ── per-vehicle target + outstanding (legacy loop, ported 1:1) ───────
     for (const [key, v] of pivot) {
@@ -356,6 +367,10 @@ export class GojekGridService {
       const cum = cumulativeMap.get(key);
       v.outstanding = (cum?.cumulativeTarget ?? 0) - (cum?.cumulativePaid ?? 0);
       v.outstandingMonth = (cum?.monthTarget ?? 0) - (cum?.monthPaid ?? 0);
+      if (dayCutoffDay !== undefined) {
+        v.monthTargetToDay = cum?.monthTargetToDay ?? 0;
+        v.monthPaidToDay = cum?.monthPaidToDay ?? 0;
+      }
 
       const exit = exitStats.exitedByPlate.get(plateClean);
       if (exit) {
@@ -381,9 +396,6 @@ export class GojekGridService {
         return filters.rentalPartners!.includes(r.rentalPartner);
       });
     }
-
-    // performers computed over the rental-partner-filtered set (legacy order)
-    const { topPerformers, bottomPerformers } = this.buildPerformers(rows);
 
     const availablePlatesMap = new Map<string, { plate: string; type: string }>();
     for (const r of rows) {
@@ -418,6 +430,8 @@ export class GojekGridService {
     let totalCalculatedTarget = 0;
     let totalOutstanding = 0;
     let totalOutstandingMonth = 0;
+    let totalOutstandingToDay = 0;
+    let totalOutstandingMonthToDay = 0;
     for (const r of rows) {
       totalDeduction += r.totalDeduction;
       totalCalculatedTarget += r.calculatedTarget;
@@ -425,6 +439,12 @@ export class GojekGridService {
       if (!r.isExited) {
         totalOutstanding += r.outstanding;
         totalOutstandingMonth += r.outstandingMonth;
+        if (dayCutoffDay !== undefined) {
+          // prior-months balance + the month's delta truncated at the cutoff day
+          const monthDeltaToDay = (r.monthTargetToDay ?? 0) - (r.monthPaidToDay ?? 0);
+          totalOutstandingToDay += r.outstanding - r.outstandingMonth + monthDeltaToDay;
+          totalOutstandingMonthToDay += monthDeltaToDay;
+        }
       }
       for (const [d, val] of Object.entries(r.dailyCountedData)) {
         dailyTotals[Number(d)] = (dailyTotals[Number(d)] ?? 0) + val;
@@ -455,13 +475,20 @@ export class GojekGridService {
       lastImportDate: exitStats.lastImportDate,
       availableRentalPartners,
       availablePlates,
-      topPerformers,
-      bottomPerformers,
+      ...(dayCutoffDay !== undefined
+        ? {
+            dayCutoff: {
+              day: dayCutoffDay,
+              totalOutstandingToDay,
+              totalOutstandingMonthToDay,
+            },
+          }
+        : {}),
     };
   }
 
   /** Zeroed grid — a partner with no registered plates sees Rp 0 everywhere. */
-  private emptyGrid(month: number, year: number): GojekGridResult {
+  private emptyGrid(month: number, year: number, dayCutoffDay?: number): GojekGridResult {
     const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
     const dailyTotals: Record<number, number> = {};
     for (let d = 1; d <= 31; d++) dailyTotals[d] = 0;
@@ -483,8 +510,15 @@ export class GojekGridService {
       lastImportDate: null,
       availableRentalPartners: [NO_RENTAL_PARTNER],
       availablePlates: [],
-      topPerformers: [],
-      bottomPerformers: [],
+      ...(dayCutoffDay !== undefined
+        ? {
+            dayCutoff: {
+              day: dayCutoffDay,
+              totalOutstandingToDay: 0,
+              totalOutstandingMonthToDay: 0,
+            },
+          }
+        : {}),
     };
   }
 
@@ -528,32 +562,6 @@ export class GojekGridService {
     bucket.displayTotal += displayAmount;
     bucket.countedTotal += countedAmount;
     if (isDisplayOnly) bucket.hasDisplayOnlyManualPayment = true;
-  }
-
-  private buildPerformers(rows: GojekVehicleRow[]): {
-    topPerformers: GojekPerformer[];
-    bottomPerformers: GojekPerformer[];
-  } {
-    const byDriver = new Map<string, GojekPerformer & { plates: string[] }>();
-    for (const r of rows) {
-      const name = r.driverName || 'Unknown Driver';
-      let p = byDriver.get(name);
-      if (!p) {
-        p = { driverName: name, vehicle: '', plates: [], totalDeduction: 0, outstanding: 0 };
-        byDriver.set(name, p);
-      }
-      if (!p.plates.includes(r.vehicle)) p.plates.push(r.vehicle);
-      p.totalDeduction += r.totalDeduction;
-      p.outstanding += r.outstanding;
-    }
-    const performers = [...byDriver.values()].map(({ plates, ...p }) => ({
-      ...p,
-      vehicle: plates.filter((x) => x.trim() !== '').join(', '),
-    }));
-
-    const top = [...performers].sort((a, b) => a.outstanding - b.outstanding).slice(0, 10);
-    const bottom = [...performers].sort((a, b) => b.outstanding - a.outstanding).slice(0, 10);
-    return { topPerformers: top, bottomPerformers: bottom };
   }
 
   /**
@@ -688,15 +696,32 @@ export class GojekGridService {
     plates: string[],
     month: number,
     year: number,
+    // Tanggal cutoff: adds month_*_to_day columns bounded at that day. The
+    // row-wise exclusions below apply to the truncated slices for free.
+    day?: number,
   ): Promise<
     Map<
       string,
-      { cumulativeTarget: number; cumulativePaid: number; monthTarget: number; monthPaid: number }
+      {
+        cumulativeTarget: number;
+        cumulativePaid: number;
+        monthTarget: number;
+        monthPaid: number;
+        monthTargetToDay?: number;
+        monthPaidToDay?: number;
+      }
     >
   > {
     const map = new Map<
       string,
-      { cumulativeTarget: number; cumulativePaid: number; monthTarget: number; monthPaid: number }
+      {
+        cumulativeTarget: number;
+        cumulativePaid: number;
+        monthTarget: number;
+        monthPaid: number;
+        monthTargetToDay?: number;
+        monthPaidToDay?: number;
+      }
     >();
     if (!plates.length) return map;
 
@@ -704,6 +729,27 @@ export class GojekGridService {
     const nextMonth = month === 12 ? 1 : month + 1;
     const nextYear = month === 12 ? year + 1 : year;
     const periodEndExclusive = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+    const dayEnd =
+      day !== undefined
+        ? `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        : null;
+
+    const dayColumns =
+      dayEnd !== null
+        ? sql`,
+        SUM(CASE
+            WHEN d.transaction_date >= ${periodStart}::date
+             AND d.transaction_date <= ${dayEnd}::date
+             AND d.type ILIKE '%due%' THEN ABS(d.amount)
+            ELSE 0
+        END)::bigint AS month_target_to_day,
+        SUM(CASE
+            WHEN d.transaction_date >= ${periodStart}::date
+             AND d.transaction_date <= ${dayEnd}::date
+             AND (d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%') THEN ABS(d.amount)
+            ELSE 0
+        END)::bigint AS month_paid_to_day`
+        : sql``;
 
     const result = await this.database.db.execute(sql`
       SELECT
@@ -721,7 +767,7 @@ export class GojekGridService {
             WHEN d.transaction_date >= ${periodStart}::date
              AND (d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%') THEN ABS(d.amount)
             ELSE 0
-        END)::bigint AS month_paid
+        END)::bigint AS month_paid${dayColumns}
       FROM fleet_import_details d
       WHERE d.transaction_date < ${periodEndExclusive}::date
         AND (d.type ILIKE '%due%' OR d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%')
@@ -749,6 +795,12 @@ export class GojekGridService {
         cumulativePaid: Number(row.cum_paid),
         monthTarget: Number(row.month_target),
         monthPaid: Number(row.month_paid),
+        ...(dayEnd !== null
+          ? {
+              monthTargetToDay: Number(row.month_target_to_day),
+              monthPaidToDay: Number(row.month_paid_to_day),
+            }
+          : {}),
       });
     }
     return map;

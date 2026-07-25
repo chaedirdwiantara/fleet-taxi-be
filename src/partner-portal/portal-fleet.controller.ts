@@ -87,6 +87,9 @@ export class PortalFleetController {
     const partnerId = requirePartner(user);
     const period = parsePeriod(month, year);
     const day = dayRaw ? Number(dayRaw) : undefined;
+    if (day !== undefined && (!Number.isInteger(day) || day < 1 || day > 31)) {
+      throw new BadRequestException('day must be an integer 1..31');
+    }
     return this.fleet.gojekSummary(partnerId, period.month, period.year, day);
   }
 

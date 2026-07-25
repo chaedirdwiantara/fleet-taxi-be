@@ -81,7 +81,7 @@ export class PortalFleetService {
     day?: number,
   ): Promise<GojekSummaryDto> {
     const scopePlates = await this.plates.registeredNorms(partnerId);
-    const result = await this.gojek.buildGrid(month, year, { scopePlates });
+    const result = await this.gojek.buildGrid(month, year, { scopePlates, day });
     return toGojekSummary(result, day);
   }
 

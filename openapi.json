@@ -914,43 +914,6 @@
         ]
       }
     },
-    "/admin/fleet/gojek/performers": {
-      "get": {
-        "operationId": "GojekController_performers",
-        "parameters": [
-          {
-            "name": "month",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "year",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "summary": "Top/bottom 10 drivers by outstanding",
-        "tags": [
-          "admin-fleet-gojek"
-        ]
-      }
-    },
     "/admin/fleet/gojek/exceptions": {
       "get": {
         "operationId": "GojekController_exceptions",
@@ -1295,45 +1258,6 @@
           }
         ],
         "summary": "Whole-month performance detail for one driver (eye modal)",
-        "tags": [
-          "admin-fleet-grab"
-        ]
-      }
-    },
-    "/admin/fleet/grab/performers": {
-      "get": {
-        "operationId": "GrabController_performers",
-        "parameters": [
-          {
-            "name": "month",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "example": 7,
-              "type": "number"
-            }
-          },
-          {
-            "name": "year",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "example": 2026,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "summary": "Top/bottom 10 by total earning collected",
         "tags": [
           "admin-fleet-grab"
         ]
