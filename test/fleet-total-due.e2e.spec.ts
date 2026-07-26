@@ -16,7 +16,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { DatabaseService } from '../src/db/database.service';
 import { fleetExceptions, fleetImportDetails, fleetImports } from '../src/db/schema';
-import { dropDetailPartition, ensureDetailPartition } from '../src/db/partitions';
+import { ensureDetailPartition } from '../src/db/partitions';
 import { toGojekSummary } from '../src/fleet/fleet-presenter';
 import { GojekGridService } from '../src/fleet/gojek-grid.service';
 
@@ -133,9 +133,13 @@ describe('Total Due = Σ imported dues', () => {
 
   afterAll(async () => {
     const { db } = database;
+    // Row deletes only — dropDetailPartition takes an exclusive lock on the
+    // partitioned parent and deadlocks against other suites' cleanup when the
+    // e2e files run in parallel workers. Empty 2035 partitions are harmless.
+    await db
+      .delete(fleetImportDetails)
+      .where(inArray(fleetImportDetails.vehiclePlateNorm, ALL_PLATES));
     await db.delete(fleetImports).where(eq(fleetImports.periodYear, YEAR));
-    await dropDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
-    await dropDetailPartition(database, 'fleet_import_details', YEAR, PREV_MONTH);
     await db.delete(fleetExceptions).where(inArray(fleetExceptions.vehiclePlate, ALL_PLATES));
     await app.close();
   });
