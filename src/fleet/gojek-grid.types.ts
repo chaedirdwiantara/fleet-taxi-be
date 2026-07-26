@@ -49,9 +49,21 @@ export interface GojekVehicleRow {
   totalDisplayAmount: number;
   totalDue: number;
   dueCount: number;
+  // Representative daily rate for DISPLAY only (Setoran column + cell-tone
+  // baseline): the fleet_targets override, else the mode of the observed daily
+  // dues, else DEFAULT_DAILY_TARGET. It no longer generates any obligation.
   dailyTarget: number;
+  // "Total Due (Target)" — Σ|due| actually imported for the month, with
+  // bebas-setoran and Rental Monitoring days waived. Same aggregate that backs
+  // `outstanding`, so outstandingMonth === calculatedTarget − paid holds by
+  // construction. Days with no due row (not yet elapsed, not yet imported, or
+  // the plate had not joined) are not billed.
   calculatedTarget: number;
-  activeDays: number;
+  // The span calculatedTarget covers, for the UI caption ("21–24 · 4 hari").
+  // billedDays === 0 → nothing was billed this month; from/to are then null.
+  billedDays: number;
+  billFromDay: number | null;
+  billToDay: number | null;
   minDay: number;
   // Running balance (Σ due − Σ paid) from the plate's first imported row up to
   // the END of the selected month — a past month shows the balance as it stood
@@ -69,6 +81,11 @@ export interface GojekVehicleRow {
   // in a later import automatically clears the flag.
   isExited: boolean;
   exitedLastSeen: string | null; // YYYY-MM-DD of the plate's last import row
+  // Plate lifecycle: first transaction date ever imported for this plate, and
+  // whether that date falls inside the selected month (a new joiner). Purely a
+  // label — a new joiner owes nothing before its first due row either way.
+  firstSeen: string | null; // YYYY-MM-DD
+  isNewJoiner: boolean;
 }
 
 // "Data Mentah Tanpa Plat": a Manual Payment row imported without a vehicle
