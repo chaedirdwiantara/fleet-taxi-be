@@ -56,7 +56,12 @@ describe('Total Due = Σ imported dues', () => {
       .returning();
     const [prevImp] = await db
       .insert(fleetImports)
-      .values({ filename: 'due-prev.csv', periodMonth: PREV_MONTH, periodYear: YEAR, status: 'done' })
+      .values({
+        filename: 'due-prev.csv',
+        periodMonth: PREV_MONTH,
+        periodYear: YEAR,
+        status: 'done',
+      })
       .returning();
 
     const day = (m: number, n: number) =>
@@ -235,9 +240,7 @@ describe('Total Due = Σ imported dues', () => {
     // at the last day of the month the cutoff block collapses onto the month
     const full = await gridFor(LATE_JOINER, 31);
     const fullSummary = toGojekSummary(full, 31);
-    expect(fullSummary.dayFilter!.cumulative.totalDue).toBe(
-      fullSummary.globalSummary.totalDue,
-    );
+    expect(fullSummary.dayFilter!.cumulative.totalDue).toBe(fullSummary.globalSummary.totalDue);
   });
 
   it('bills nothing before the first due day even with the cutoff inside that gap', async () => {
