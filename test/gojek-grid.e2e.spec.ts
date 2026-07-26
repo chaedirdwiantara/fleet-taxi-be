@@ -295,16 +295,22 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     const row = grid.rows.find((r) => r.key === 'G7771KA');
     expect(row).toBeDefined();
 
-    // inferred: no manual target -> round(950000/2) = 475000
-    expect(row!.dailyTarget).toBe(475000);
+    // display rate: no manual target -> mode of {500000@d3, 450000@d4}; the
+    // tie resolves to the later day, so the newer rate wins
+    expect(row!.dailyTarget).toBe(450000);
     // counted month total: 400000+480000 deductions + 100000 manual counted
     expect(row!.totalDeduction).toBe(980000);
     // display total also includes the uncounted 50000
     expect(row!.totalDisplayAmount).toBe(1030000);
     // active range: min from due day 3 (uncounted manual on 7 must NOT extend range beyond counted 6)
     expect(row!.minDay).toBe(3);
-    // targetDays = (31 - 3 + 1) - 1 free-day exception = 28 -> 475000 x 28
-    expect(row!.calculatedTarget).toBe(475000 * 28);
+    // Total Due = Σ of the dues actually imported (d3 + d4). Nothing is billed
+    // for d5..d31: those days carry no due row. The day-10 bebas-setoran
+    // exception waives nothing here because it has no due row either.
+    expect(row!.calculatedTarget).toBe(950000);
+    expect(row!.billedDays).toBe(2);
+    expect(row!.billFromDay).toBe(3);
+    expect(row!.billToDay).toBe(4);
     // exception on day 5 ignored (money present); day 10 kept
     expect(row!.exceptions[10]).toBeDefined();
     expect(row!.exceptions[5]).toBeUndefined();
@@ -331,8 +337,13 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     const row = grid.rows.find((r) => r.key === 'G7772KB');
     expect(row!.dailyTarget).toBe(300000);
     expect(row!.rentalPartner).toBe(`${RUN}-RENTAL`);
-    // minDay 10 -> targetDays 22 -> 300000 x 22
-    expect(row!.calculatedTarget).toBe(300000 * 22);
+    // The manual target sets the displayed rate but no longer generates an
+    // obligation: this plate has a deduction and zero due rows, so nothing
+    // was ever billed to it this month.
+    expect(row!.calculatedTarget).toBe(0);
+    expect(row!.billedDays).toBe(0);
+    expect(row!.billFromDay).toBeNull();
+    expect(row!.billToDay).toBeNull();
     // no due rows ever → cumulative outstanding = 0 − 300000 (overpaid credit)
     expect(row!.outstanding).toBe(-300000);
     expect(row!.outstandingMonth).toBe(-300000);

@@ -68,8 +68,16 @@ export interface FleetRowDto {
   days: Record<number, DayCellValueDto>;
   summary: {
     totalDeduction: number;
+    // "Total Due (Target)" — Σ of the due rows actually imported this month,
+    // bebas-setoran and Rental Monitoring days waived. Never extrapolated to
+    // days that have not elapsed or were never billed.
     calculatedTarget: number;
     gap: number;
+    // The span calculatedTarget covers, so the UI can explain the figure
+    // ("21–24 · 4 hari"). billedDays === 0 → nothing billed, from/to null.
+    billedDays: number;
+    billFromDay: number | null;
+    billToDay: number | null;
     // Cumulative balance (Σ due − Σ paid) from the plate's first imported row
     // up to the END of the selected month; outstandingMonth is that month's
     // own delta (outstanding = previous-month outstanding + outstandingMonth).
@@ -81,6 +89,11 @@ export interface FleetRowDto {
   // when it reappears). exitedLastSeen = last import date it was seen (YYYY-MM-DD).
   isExited: boolean;
   exitedLastSeen: string | null;
+  // Plate first appeared inside the selected month — a new joiner, whose lower
+  // Total Due reflects a shorter month, not underpayment. joinDate is its first
+  // imported transaction date (YYYY-MM-DD).
+  isNewJoiner: boolean;
+  joinDate: string | null;
 }
 
 // "Data Mentah Tanpa Plat": an unprocessed Manual Payment row imported without
@@ -263,12 +276,17 @@ function toFleetRow(row: GojekVehicleRow): FleetRowDto {
       totalDeduction: row.totalDeduction,
       calculatedTarget: row.calculatedTarget,
       gap: row.totalDeduction - row.calculatedTarget,
+      billedDays: row.billedDays,
+      billFromDay: row.billFromDay,
+      billToDay: row.billToDay,
       outstanding: row.outstanding,
       outstandingMonth: row.outstandingMonth,
     },
     driverHistory: row.driverHistory,
     isExited: row.isExited,
     exitedLastSeen: row.exitedLastSeen,
+    isNewJoiner: row.isNewJoiner,
+    joinDate: row.firstSeen,
   };
 }
 
@@ -328,29 +346,17 @@ function toCharts(result: GojekGridResult): FleetChartsDto {
   return { daily, byPartner };
 }
 
-// Day-truncated calculatedTarget for one row: the line-of-business formula
-// (dailyTarget × billable days) with the window cut at `day`. Bebas-setoran
-// days inside [minDay..day] shrink the target exactly like the full-month
-// exceptionDaysFreeCount does, so at day === daysInMonth this reduces to
-// row.calculatedTarget.
-function rowDueToDay(row: GojekVehicleRow, day: number): number {
-  if (day < row.minDay) return 0;
-  let freeDays = 0;
-  for (const [d, exc] of Object.entries(row.exceptions)) {
-    const dayNum = Number(d);
-    if (exc.isBebasSetoran && dayNum >= row.minDay && dayNum <= day) freeDays++;
-  }
-  const targetDays = Math.max(0, day - row.minDay + 1 - freeDays);
-  return row.dailyTarget * targetDays;
-}
-
 function toDayFilterSummary(result: GojekGridResult): DayFilterSummaryDto | undefined {
   const cutoff = result.dayCutoff;
   if (!cutoff) return undefined;
   const { day } = cutoff;
   let totalDeduction = 0;
   for (let d = 1; d <= day; d++) totalDeduction += result.dailyTotals[d] ?? 0;
-  const totalDue = result.rows.reduce((sum, row) => sum + rowDueToDay(row, day), 0);
+  // Same SQL slice as calculatedTarget, truncated at the cutoff — populated by
+  // buildGrid exactly when a day cutoff was requested, which is exactly when
+  // this runs. At day === daysInMonth the two predicates select the same rows,
+  // so `dayFilter.cumulative === globalSummary` holds structurally.
+  const totalDue = result.rows.reduce((sum, row) => sum + (row.monthTargetToDay ?? 0), 0);
   return {
     day,
     cumulative: {

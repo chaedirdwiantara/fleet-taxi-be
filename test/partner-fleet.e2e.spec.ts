@@ -216,7 +216,7 @@ describe('partner portal fleet monitoring (Daftarkan Plat + scoped grids)', () =
     await a.post('/partner/portal/plates').send({ plateNumber: '   ' }).expect(400);
   });
 
-  it('marks Rental Monitoring days on the Gojek grid (money wins, target shrinks)', async () => {
+  it('marks Rental Monitoring days on the Gojek grid (money wins)', async () => {
     const { db } = database;
     const d = (day: number) => `${YEAR}-0${MONTH}-${String(day).padStart(2, '0')}`;
     await db.insert(rentals).values({
@@ -245,9 +245,10 @@ describe('partner portal fleet monitoring (Daftarkan Plat + scoped grids)', () =
     expect(mine.days['5'].exception ?? null).toBeNull();
     expect(mine.days['6'].exception ?? null).toBeNull();
     expect(mine.days['5'].countedAmount).toBe(300000);
-    // bebas days shrink the expected target: 2 marker days (7, 8) excluded
-    const remainingDays = 30 - 5 + 1; // minDay 5, April = 30 days
-    expect(mine.summary.calculatedTarget).toBe(mine.dailyTarget * (remainingDays - 2));
+    // This plate's fixture carries deposits but no `due` rows at all, so
+    // nothing was ever billed to it — the rental days have no due to waive.
+    expect(mine.summary.calculatedTarget).toBe(0);
+    expect(mine.summary.billedDays).toBe(0);
 
     await db.delete(rentals).where(eq(rentals.partnerId, partnerId));
   });

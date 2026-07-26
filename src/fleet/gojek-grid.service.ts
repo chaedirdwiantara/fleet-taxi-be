@@ -6,7 +6,6 @@ import { DatabaseService } from '../db/database.service';
 import { fleetExceptions, fleetImportDetails, fleetTargets, rentals } from '../db/schema';
 import { encodeDueSegments } from './due-segments';
 import {
-  DEFAULT_DAILY_TARGET,
   DailyDetailBucket,
   ExitedDriver,
   GojekGridResult,
@@ -14,6 +13,9 @@ import {
   NO_RENTAL_PARTNER,
   RawManualRow,
 } from './gojek-grid.types';
+import { billedWindow, dailyTargetFrom } from './target-window';
+
+const EMPTY_DAYS: ReadonlySet<number> = new Set();
 
 /**
  * Faithful port of legacy AdminFleetMonitoringController::buildMonitoringData.
@@ -164,13 +166,17 @@ export class GojekGridService {
           dueCount: 0,
           dailyTarget: 0,
           calculatedTarget: 0,
-          activeDays: 0,
+          billedDays: 0,
+          billFromDay: null,
+          billToDay: null,
           minDay: 31,
           maxDay: 1,
           outstanding: 0,
           outstandingMonth: 0,
           isExited: false,
           exitedLastSeen: null,
+          firstSeen: null,
+          isNewJoiner: false,
         };
         pivot.set(plateKey, v);
       }
@@ -245,6 +251,18 @@ export class GojekGridService {
       string,
       Map<number, { keterangan: string | null; isBebasSetoran: boolean }>
     >();
+    // Days the cumulative SQL waives, tracked independently of the marker map
+    // above. The two rules genuinely differ: markers follow "spreadsheet money
+    // wins" and an explicit exception overrides an overlapping rental, while
+    // the SQL waives a day if EITHER source covers it, money or not. Deriving
+    // the caption from the marker map would let it span days the amount was
+    // never summed over.
+    const waivedDaysByPlate = new Map<string, Set<number>>();
+    const waive = (plate: string, day: number) => {
+      const days = waivedDaysByPlate.get(plate);
+      if (days) days.add(day);
+      else waivedDaysByPlate.set(plate, new Set([day]));
+    };
     for (const e of exceptionsRows) {
       const plate = normalizePlate(e.vehiclePlate);
       const d = Number(e.exceptionDate.slice(8, 10));
@@ -253,6 +271,7 @@ export class GojekGridService {
         keterangan: e.keterangan,
         isBebasSetoran: e.isBebasSetoran,
       });
+      if (e.isBebasSetoran) waive(plate, d);
     }
 
     // Rental Monitoring bookings mark their days exactly like bebas-setoran
@@ -283,15 +302,18 @@ export class GojekGridService {
             isBebasSetoran: true,
           });
         }
+        // The SQL waives a rental day even when an explicit exception took the
+        // marker slot above, so record it regardless.
+        waive(r.plateNorm, d);
       }
     }
 
     const pivotPlates = [
       ...new Set([...pivot.values()].map((v) => v.vehicle).filter((p) => p !== '')),
     ];
-    const [cumulativeMap, exitStats] = await Promise.all([
+    const [cumulativeMap, lifecycle] = await Promise.all([
       this.fetchCumulativeStats(pivotPlates, month, year, dayCutoffDay),
-      this.fetchExitStats(filters.scopePlates),
+      this.fetchPlateLifecycle(filters.scopePlates),
     ]);
 
     // ── per-vehicle target + outstanding (legacy loop, ported 1:1) ───────
@@ -323,41 +345,20 @@ export class GojekGridService {
       const registeredPartner = filters.partnerNameByNorm?.get(plateClean);
       if (registeredPartner) v.rentalPartner = registeredPartner;
 
-      let dailyTarget =
-        manualTarget > 0
-          ? manualTarget
-          : v.dueCount > 0
-            ? Math.round(v.totalDue / v.dueCount)
-            : DEFAULT_DAILY_TARGET;
-      if (dailyTarget === 0) dailyTarget = DEFAULT_DAILY_TARGET;
-
       let minDay = v.minDay <= 31 ? v.minDay : 1;
       const maxDay = v.maxDay >= 1 ? v.maxDay : 1;
       if (minDay > maxDay) minDay = maxDay;
-      const activeDays = maxDay - minDay + 1;
 
-      // exceptions: spreadsheet money wins; bebas-setoran days in range shrink target
-      let exceptionDaysFreeCount = 0;
+      // Exception markers: spreadsheet money wins, so a day that carries money
+      // shows no marker. Unchanged — markers are a separate concern from the
+      // waived-days set the caption uses.
       const plateExceptions = exceptionsMap.get(plateClean);
       if (plateExceptions) {
         for (const [d, exc] of plateExceptions) {
           const hasAmount = (v.dailyData[d] ?? 0) > 0;
-          if (!hasAmount) {
-            v.exceptions[d] = exc;
-            if (exc.isBebasSetoran && d >= minDay && d <= daysInMonth) {
-              exceptionDaysFreeCount++;
-            }
-          }
+          if (!hasAmount) v.exceptions[d] = exc;
         }
       }
-
-      const remainingDays = daysInMonth - minDay + 1;
-      const targetDays = Math.max(0, remainingDays - exceptionDaysFreeCount);
-
-      v.dailyTarget = dailyTarget;
-      v.calculatedTarget = dailyTarget * targetDays;
-      v.activeDays = activeDays;
-      v.minDay = minDay;
 
       // Outstanding = running balance (Σ due − Σ paid) from the plate's first
       // imported row up to the end of the SELECTED month; outstandingMonth is
@@ -372,11 +373,28 @@ export class GojekGridService {
         v.monthPaidToDay = cum?.monthPaidToDay ?? 0;
       }
 
-      const exit = exitStats.exitedByPlate.get(plateClean);
+      // The obligation IS the billed dues — the same `month_target` slice that
+      // produced outstandingMonth above, so the two columns can never disagree.
+      // Nothing is extrapolated past what the import actually billed: days that
+      // have not elapsed, have not been imported, or predate the plate's first
+      // due row simply contribute nothing.
+      v.dailyTarget = dailyTargetFrom(v.dailyDue, manualTarget);
+      v.calculatedTarget = cum?.monthTarget ?? 0;
+      const window = billedWindow(v.dailyDue, waivedDaysByPlate.get(plateClean) ?? EMPTY_DAYS);
+      v.billedDays = window.billedDays;
+      v.billFromDay = window.billFromDay;
+      v.billToDay = window.billToDay;
+      v.minDay = minDay;
+
+      const exit = lifecycle.exitedByPlate.get(plateClean);
       if (exit) {
         v.isExited = true;
         v.exitedLastSeen = exit.lastSeen;
       }
+
+      const firstSeen = lifecycle.firstSeenByPlate.get(plateClean) ?? null;
+      v.firstSeen = firstSeen;
+      v.isNewJoiner = firstSeen !== null && firstSeen >= monthStart;
 
       v.dueSegments = encodeDueSegments(v.dailyDue);
     }
@@ -469,10 +487,10 @@ export class GojekGridService {
         (a, b) => byteCompare(a.transactionDate, b.transactionDate) || a.detailId - b.detailId,
       ),
       rawTotalAmount: rawManualRows.reduce((sum, r) => sum + r.amount, 0),
-      outstandingDriverKeluar: exitStats.outstandingDriverKeluar,
-      exitedCount: exitStats.exitedCount,
-      exitedDrivers: exitStats.exitedDrivers,
-      lastImportDate: exitStats.lastImportDate,
+      outstandingDriverKeluar: lifecycle.outstandingDriverKeluar,
+      exitedCount: lifecycle.exitedCount,
+      exitedDrivers: lifecycle.exitedDrivers,
+      lastImportDate: lifecycle.lastImportDate,
       availableRentalPartners,
       availablePlates,
       ...(dayCutoffDay !== undefined
@@ -565,7 +583,13 @@ export class GojekGridService {
   }
 
   /**
-   * Driver-keluar detection + balance (ported from the legacy
+   * Per-plate lifecycle: when it first appeared, and whether it has since left.
+   *
+   * FIRST SEEN is the plate's oldest transaction date across all history. A
+   * plate whose first date falls inside the selected month is a new joiner —
+   * a label only, since it owes nothing before its first due row regardless.
+   *
+   * DRIVER KELUAR detection + balance (ported from the legacy
    * fetchExitedFleetOutstanding). A plate is exited when its all-time last
    * transaction date is older than the newest import date ANYWHERE — the
    * reference is the latest upload, so it stays global even under partner
@@ -580,15 +604,17 @@ export class GojekGridService {
    * balance (driver name taken from the plate's last import rows), sorted by
    * outstanding descending like the legacy modal.
    */
-  private async fetchExitStats(scopePlates?: string[]): Promise<{
+  private async fetchPlateLifecycle(scopePlates?: string[]): Promise<{
     exitedByPlate: Map<string, { lastSeen: string; outstanding: number }>;
+    firstSeenByPlate: Map<string, string>; // plate → oldest transaction date ever
     outstandingDriverKeluar: number;
     exitedCount: number;
     exitedDrivers: ExitedDriver[];
     lastImportDate: string | null; // newest transaction date anywhere (modal subtitle)
   }> {
     const empty = {
-      exitedByPlate: new Map(),
+      exitedByPlate: new Map<string, { lastSeen: string; outstanding: number }>(),
+      firstSeenByPlate: new Map<string, string>(),
       outstandingDriverKeluar: 0,
       exitedCount: 0,
       exitedDrivers: [],
@@ -603,24 +629,36 @@ export class GojekGridService {
         )})`
       : sql``;
 
+    // MIN rides along on a scan that was already unbounded — one extra
+    // aggregate over tuples we read anyway, no new query and no new index.
     const lastSeenRows = (await this.database.db.execute(sql`
       SELECT
         vehicle_plate_norm AS plate,
+        MIN(transaction_date)::text AS first_seen,
         MAX(transaction_date)::text AS last_seen,
         (SELECT MAX(transaction_date)::text FROM fleet_import_details) AS global_last
       FROM fleet_import_details
       WHERE vehicle_plate_norm <> '' ${scopeFilter}
       GROUP BY vehicle_plate_norm
-    `)) as unknown as Array<{ plate: string; last_seen: string; global_last: string }>;
+    `)) as unknown as Array<{
+      plate: string;
+      first_seen: string;
+      last_seen: string;
+      global_last: string;
+    }>;
 
     const lastImportDate = lastSeenRows[0]?.global_last ?? null;
+    // Built BEFORE the no-exits early return below — "nothing exited" is the
+    // common case, and the join dates must survive it.
+    const firstSeenByPlate = new Map<string, string>();
     const exitedByPlate = new Map<string, { lastSeen: string; outstanding: number }>();
     for (const row of lastSeenRows) {
+      firstSeenByPlate.set(row.plate, row.first_seen);
       if (row.last_seen < row.global_last) {
         exitedByPlate.set(row.plate, { lastSeen: row.last_seen, outstanding: 0 });
       }
     }
-    if (!exitedByPlate.size) return { ...empty, lastImportDate };
+    if (!exitedByPlate.size) return { ...empty, firstSeenByPlate, lastImportDate };
 
     const balanceRows = (await this.database.db.execute(sql`
       SELECT
@@ -678,7 +716,14 @@ export class GojekGridService {
       }))
       .sort((a, b) => b.outstanding - a.outstanding);
 
-    return { exitedByPlate, outstandingDriverKeluar, exitedCount, exitedDrivers, lastImportDate };
+    return {
+      exitedByPlate,
+      firstSeenByPlate,
+      outstandingDriverKeluar,
+      exitedCount,
+      exitedDrivers,
+      lastImportDate,
+    };
   }
 
   /**
