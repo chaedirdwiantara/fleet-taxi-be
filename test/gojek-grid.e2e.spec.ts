@@ -523,7 +523,9 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     const at = (d: number) => `${YEAR}-${mm}-${String(d).padStart(2, '0')}`;
 
     const res = await agent
-      .get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&dateFrom=${at(5)}&dateTo=${at(7)}`)
+      .get(
+        `/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&dateFrom=${at(5)}&dateTo=${at(7)}`,
+      )
       .expect(200);
     const daily = res.body.data.charts.daily as Array<{ day: number; total: number }>;
     // charts + globalSummary keep whole-month semantics despite the range

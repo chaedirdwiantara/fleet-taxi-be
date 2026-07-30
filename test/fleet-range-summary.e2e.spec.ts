@@ -15,12 +15,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { DatabaseService } from '../src/db/database.service';
 import { ensureDetailPartition } from '../src/db/partitions';
-import {
-  fleetImportDetails,
-  fleetImports,
-  grabImportDetails,
-  grabImports,
-} from '../src/db/schema';
+import { fleetImportDetails, fleetImports, grabImportDetails, grabImports } from '../src/db/schema';
 import { GojekGridService } from '../src/fleet/gojek-grid.service';
 import { buildPeriodSummary } from '../src/fleet/range-summary';
 import { GrabGridService } from '../src/grab/grab-grid.service';
@@ -96,12 +91,14 @@ describe('Tanggal date-range summary', () => {
       type,
     });
 
-    await db.insert(fleetImportDetails).values([
-      ...JUL_DUE_DAYS.map((d) => detail(JUL, d, DAILY_DUE, 'Rental fee due')),
-      ...JUL_PAID_DAYS.map((d) => detail(JUL, d, -DAILY_DUE, 'Rental fee deduction')),
-      ...AUG_DUE_DAYS.map((d) => detail(AUG, d, DAILY_DUE, 'Rental fee due')),
-      ...AUG_PAID_DAYS.map((d) => detail(AUG, d, -DAILY_DUE, 'Rental fee deduction')),
-    ]);
+    await db
+      .insert(fleetImportDetails)
+      .values([
+        ...JUL_DUE_DAYS.map((d) => detail(JUL, d, DAILY_DUE, 'Rental fee due')),
+        ...JUL_PAID_DAYS.map((d) => detail(JUL, d, -DAILY_DUE, 'Rental fee deduction')),
+        ...AUG_DUE_DAYS.map((d) => detail(AUG, d, DAILY_DUE, 'Rental fee due')),
+        ...AUG_PAID_DAYS.map((d) => detail(AUG, d, -DAILY_DUE, 'Rental fee deduction')),
+      ]);
 
     const grabImportIds = new Map<number, number>();
     for (const month of [JUL, AUG]) {
