@@ -51,6 +51,8 @@ const EXPECTED_OPERATIONS = [
   'GET /partner/portal/drivers',
   'GET /partner/portal/drivers/documents/{documentId}/file',
   'GET /partner/portal/drivers/{id}',
+  'GET /partner/portal/fleet/all/cell',
+  'GET /partner/portal/fleet/all/grid',
   'GET /partner/portal/fleet/gojek/cell',
   'GET /partner/portal/fleet/gojek/exceptions',
   'GET /partner/portal/fleet/gojek/grid',

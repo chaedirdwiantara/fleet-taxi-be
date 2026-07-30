@@ -694,6 +694,18 @@
             }
           },
           {
+            "name": "mode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "plate",
+                "driver"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "name": "rentalPartner",
             "required": false,
             "in": "query",
@@ -715,7 +727,7 @@
             "session": []
           }
         ],
-        "summary": "31-day deposit pivot grid (rows = vehicles)",
+        "summary": "31-day deposit pivot grid (rows = vehicles, or drivers)",
         "tags": [
           "admin-fleet-gojek"
         ]
@@ -747,7 +759,7 @@
             "name": "plate",
             "required": true,
             "in": "query",
-            "description": "Row key: normalized plate or manual_<detailId>",
+            "description": "Row key: normalized plate, or drv:<NAME> when mode=driver",
             "schema": {
               "type": "string"
             }
@@ -759,6 +771,18 @@
             "schema": {
               "example": 15,
               "type": "number"
+            }
+          },
+          {
+            "name": "mode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "plate",
+                "driver"
+              ],
+              "type": "string"
             }
           }
         ],
@@ -1129,6 +1153,18 @@
             }
           },
           {
+            "name": "mode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "plate",
+                "driver"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "name": "rentalPartner",
             "required": false,
             "in": "query",
@@ -1150,7 +1186,7 @@
             "session": []
           }
         ],
-        "summary": "31-day earnings pivot grid (composite key plate|city|driver)",
+        "summary": "31-day earnings pivot grid (composite key plate|city|driver, or one row per driver)",
         "tags": [
           "admin-fleet-grab"
         ]
@@ -1232,8 +1268,20 @@
             "name": "compositeKey",
             "required": true,
             "in": "query",
-            "description": "plate|city|driver",
+            "description": "plate|city|driver, or drv:<NAME> when mode=driver",
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "plate",
+                "driver"
+              ],
               "type": "string"
             }
           },
@@ -1570,6 +1618,126 @@
         ]
       }
     },
+    "/partner/portal/fleet/all/grid": {
+      "get": {
+        "operationId": "PortalFleetController_allFleetGrid",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "number"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "number"
+            }
+          },
+          {
+            "name": "mode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "plate",
+                "driver"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Own combined fleet income matrix — Gojek + Grab + Rental per subject per day",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/fleet/all/cell": {
+      "get": {
+        "operationId": "PortalFleetController_allFleetCell",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "number"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "number"
+            }
+          },
+          {
+            "name": "key",
+            "required": true,
+            "in": "query",
+            "description": "Row key: normalized plate, drv:<NAME>, or \"residual\" for the unattributed row",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "day",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 15,
+              "type": "number"
+            }
+          },
+          {
+            "name": "mode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "plate",
+                "driver"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Transactions behind one All Fleet cell (subject + day, per source)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
     "/partner/portal/fleet/gojek/grid": {
       "get": {
         "operationId": "PortalFleetController_gojekGrid",
@@ -1590,6 +1758,18 @@
             "schema": {
               "example": 2026,
               "type": "number"
+            }
+          },
+          {
+            "name": "mode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "plate",
+                "driver"
+              ],
+              "type": "string"
             }
           }
         ],
@@ -1635,7 +1815,7 @@
             "name": "plate",
             "required": true,
             "in": "query",
-            "description": "Row key: normalized plate or manual_<detailId>",
+            "description": "Row key: normalized plate, or drv:<NAME> when mode=driver",
             "schema": {
               "type": "string"
             }
@@ -1647,6 +1827,18 @@
             "schema": {
               "example": 15,
               "type": "number"
+            }
+          },
+          {
+            "name": "mode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "plate",
+                "driver"
+              ],
+              "type": "string"
             }
           }
         ],
@@ -1831,6 +2023,18 @@
               "example": 2026,
               "type": "number"
             }
+          },
+          {
+            "name": "mode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "plate",
+                "driver"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1875,8 +2079,20 @@
             "name": "compositeKey",
             "required": true,
             "in": "query",
-            "description": "plate|city|driver",
+            "description": "plate|city|driver, or drv:<NAME> when mode=driver",
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mode",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "plate",
+                "driver"
+              ],
               "type": "string"
             }
           },

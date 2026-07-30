@@ -224,6 +224,100 @@ export function summarizeRentals(items: RentalItemDto[]): RentalSummaryDto {
   };
 }
 
+// ---- daily income (All Fleet Monitoring matrix) --------------------------------
+
+/** One plate's rental income spread over the days of the selected month. */
+export interface RentalDailyIncomeDto {
+  plateNorm: string;
+  plateNumber: string; // display form of the most recent transaction
+  vehicleType: string | null;
+  region: string | null;
+  /** Integer rupiah per day-of-month; only days inside a booking appear. */
+  days: Record<number, number>;
+  /** Σ days — equals the plates' `omset` for the month by construction. */
+  total: number;
+}
+
+/**
+ * ONE booking's omset spread over the days of the selected month — the single
+ * rule the matrix and its cell drill-down both read, so a cell can never
+ * disagree with the row it sits in.
+ *
+ * The booking contributes `pricePerDay` to every day of its month-clipped range
+ * (the same clipping `presentRental` applies) and its per-transaction
+ * `additionalCost` once, on the first clipped day. Σ days therefore equals
+ * `gross + additionalCost` — the `omset` Rental Monitoring shows. Payment status
+ * is not a filter: Rental Monitoring counts omset for every booking in the month.
+ *
+ * @returns day-of-month → integer rupiah; empty when the booking misses the month
+ */
+export function rentalBookingDays(
+  row: RentalRow,
+  period: { year: number; month: number },
+): Record<number, number> {
+  const { start, end } = monthBounds(period.year, period.month);
+  const from = row.startDate < start ? start : row.startDate;
+  const to = row.endDate > end ? end : row.endDate;
+  if (to < from) return {}; // booking does not overlap the month at all
+
+  const days: Record<number, number> = {};
+  const firstDay = Number(from.slice(8, 10));
+  const lastDay = Number(to.slice(8, 10));
+  for (let day = firstDay; day <= lastDay; day++) {
+    days[day] = row.pricePerDay + (day === firstDay ? row.additionalCost : 0);
+  }
+  return days;
+}
+
+/**
+ * Rental omset per plate per day, so it can sit next to Gojek setoran and Grab
+ * earning in one subject × day matrix. Per-booking basis: {@link rentalBookingDays}.
+ */
+export function rentalDailyIncome(
+  rows: RentalRow[],
+  period: { year: number; month: number },
+): RentalDailyIncomeDto[] {
+  const byPlate = new Map<string, RentalDailyIncomeDto & { latestStart: string }>();
+
+  for (const row of rows) {
+    const bookingDays = rentalBookingDays(row, period);
+    if (!Object.keys(bookingDays).length) continue;
+
+    let entry = byPlate.get(row.plateNumberNorm);
+    if (!entry) {
+      entry = {
+        plateNorm: row.plateNumberNorm,
+        plateNumber: row.plateNumber,
+        vehicleType: row.vehicleType,
+        region: row.region,
+        days: {},
+        total: 0,
+        latestStart: row.startDate,
+      };
+      byPlate.set(row.plateNumberNorm, entry);
+    }
+    // Metadata follows the most recent booking of the plate.
+    if (row.startDate >= entry.latestStart) {
+      entry.latestStart = row.startDate;
+      entry.plateNumber = row.plateNumber;
+      entry.vehicleType = row.vehicleType;
+      entry.region = row.region;
+    }
+
+    for (const [day, amount] of Object.entries(bookingDays)) {
+      entry.days[Number(day)] = (entry.days[Number(day)] ?? 0) + amount;
+      entry.total += amount;
+    }
+  }
+
+  return [...byPlate.values()]
+    .map(({ latestStart, ...rest }) => {
+      void latestStart;
+      return rest;
+    })
+    .sort((a, b) => b.total - a.total || a.plateNorm.localeCompare(b.plateNorm));
+}
+
 /** Paid-only nett recap per cogsType (fallback 'Lainnya'), sorted by nett desc. */
 export function nettByType(items: RentalItemDto[]): NettByTypeDto[] {
   const byType = new Map<string, NettByTypeDto>();

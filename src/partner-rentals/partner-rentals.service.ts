@@ -17,6 +17,9 @@ import {
   NettByTypeDto,
   PaymentStatus,
   presentRental,
+  rentalBookingDays,
+  rentalDailyIncome,
+  RentalDailyIncomeDto,
   RentalItemDto,
   RentalSortField,
   RentalSummaryDto,
@@ -83,6 +86,64 @@ export class PartnerRentalsService {
       regions: await this.regions(partnerId),
       items,
     };
+  }
+
+  /**
+   * The partner's rental income spread per plate per day of the month — the
+   * Rental column of the All Fleet Monitoring matrix. Same month-overlap query
+   * and same money basis as `list()`, so the two screens always agree.
+   */
+  async dailyIncome(
+    partnerId: number,
+    month: number,
+    year: number,
+  ): Promise<RentalDailyIncomeDto[]> {
+    const { start, end } = monthBounds(year, month);
+    const rows = await this.database.db
+      .select()
+      .from(rentals)
+      .where(
+        and(
+          eq(rentals.partnerId, partnerId),
+          lte(rentals.startDate, end),
+          gte(rentals.endDate, start),
+        ),
+      );
+    return rentalDailyIncome(rows, { year, month });
+  }
+
+  /**
+   * The partner's bookings that cover one calendar day, each with the amount it
+   * contributes to that day — the Rental section of an All Fleet cell. Uses the
+   * same per-booking spread as `dailyIncome`, so Σ items equals the cell.
+   */
+  async dayBookings(
+    partnerId: number,
+    month: number,
+    year: number,
+    day: number,
+    plateNorm?: string,
+  ): Promise<Array<RentalItemDto & { amountForDay: number }>> {
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const rows = await this.database.db
+      .select()
+      .from(rentals)
+      .where(
+        and(
+          eq(rentals.partnerId, partnerId),
+          lte(rentals.startDate, date),
+          gte(rentals.endDate, date),
+          plateNorm ? eq(rentals.plateNumberNorm, plateNorm) : undefined,
+        ),
+      );
+
+    return rows
+      .map((row) => ({
+        ...presentRental(row, { year, month }),
+        amountForDay: rentalBookingDays(row, { year, month })[day] ?? 0,
+      }))
+      .filter((item) => item.amountForDay !== 0)
+      .sort((a, b) => b.amountForDay - a.amountForDay);
   }
 
   async create(partnerId: number, dto: CreateRentalDto): Promise<RentalItemDto> {

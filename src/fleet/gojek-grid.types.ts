@@ -22,14 +22,20 @@ export interface ExceptionInfo {
   isBebasSetoran: boolean;
 }
 
+import type { MonitoringMode } from '../common/util/monitoring-mode';
 import type { DueSegment } from './due-segments';
 
 export interface GojekVehicleRow {
-  key: string; // normalized plate or manual_<detailId>
+  // Row identity: a normalized plate, or `drv:<NORMALIZED NAME>` when the grid
+  // was built with `mode: 'driver'`.
+  key: string;
   detailId: number | null; // set for synthetic manual_ rows (edit form target)
   driverName: string;
   driverHistory: string[];
-  vehicle: string; // normalized plate ('' for unplated manual payments)
+  vehicle: string; // normalized plate ('' for unplated manual payments / driver rows)
+  // Mirror of driverHistory: the plates this row covers, in order of appearance.
+  // Plate mode → the row's own plate; driver mode → every plate the person drove.
+  plateHistory: string[];
   rentalPartner: string;
   deliveryBatch: string;
   serviceArea: string;
@@ -114,6 +120,9 @@ export interface GojekGridResult {
   month: number;
   year: number;
   daysInMonth: number;
+  // Which subject the rows describe. Every total below is mode-independent:
+  // both modes sum the same import rows, only the grouping differs.
+  mode: MonitoringMode;
   rows: GojekVehicleRow[];
   dailyTotals: Record<number, number>; // counted, over filtered rows
   totalDeduction: number;

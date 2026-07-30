@@ -8,5 +8,9 @@ import { RentalsExportService } from './rentals-export.service';
 @Module({
   controllers: [PartnerRentalsController],
   providers: [PartnerRentalsService, RentalCogsDefaultsService, RentalsExportService],
+  // Rental income is one of the three sources of the partner portal's All Fleet
+  // Monitoring matrix, so the portal module reads it through this service rather
+  // than re-querying `rentals` with its own money rules.
+  exports: [PartnerRentalsService],
 })
 export class PartnerRentalsModule {}

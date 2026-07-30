@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
+import type { MonitoringMode } from '../common/util/monitoring-mode';
 import { normalizePlate } from '../common/util/plate';
 import { ExceptionsService, type CreateExceptionInput } from '../fleet/exceptions.service';
 import {
@@ -34,22 +35,17 @@ export class PortalFleetService {
     private readonly exceptions: ExceptionsService,
   ) {}
 
-  /** norm → Type map from the partner's registered plates (Daftarkan Plat). */
-  private async registeredTypes(partnerId: number): Promise<Map<string, string>> {
-    const registered = await this.plates.list(partnerId);
-    const map = new Map<string, string>();
-    for (const p of registered) {
-      if (p.vehicleType) map.set(p.plateNumberNorm, p.vehicleType);
-    }
-    return map;
-  }
-
-  async gojekGrid(partnerId: number, month: number, year: number): Promise<FleetGridDto> {
+  async gojekGrid(
+    partnerId: number,
+    month: number,
+    year: number,
+    mode: MonitoringMode = 'plate',
+  ): Promise<FleetGridDto> {
     const [scopePlates, typeMap] = await Promise.all([
       this.plates.registeredNorms(partnerId),
-      this.registeredTypes(partnerId),
+      this.plates.typeByNorm(partnerId),
     ]);
-    const result = await this.gojek.buildGrid(month, year, { scopePlates });
+    const result = await this.gojek.buildGrid(month, year, { scopePlates, mode });
     const dto = toFleetGrid(result);
     // Surface the Type the partner entered in Daftarkan Plat when the grid has
     // none (no admin fleet target set it) — matches the registration screen.
@@ -66,12 +62,13 @@ export class PortalFleetService {
     partnerId: number,
     month: number,
     year: number,
-    plate: string,
+    rowKey: string,
     day: number,
+    mode: MonitoringMode = 'plate',
   ): Promise<CellBreakdownDto | null> {
     const scopePlates = await this.plates.registeredNorms(partnerId);
-    const bucket = await this.gojek.getCell(month, year, plate, day, scopePlates);
-    return bucket ? toCellBreakdown(bucket, plate, day) : null;
+    const bucket = await this.gojek.getCell(month, year, rowKey, day, scopePlates, mode);
+    return bucket ? toCellBreakdown(bucket, rowKey, day) : null;
   }
 
   async gojekSummary(
@@ -119,12 +116,17 @@ export class PortalFleetService {
     return this.exceptions.remove(id);
   }
 
-  async grabGrid(partnerId: number, month: number, year: number): Promise<GrabGridDto> {
+  async grabGrid(
+    partnerId: number,
+    month: number,
+    year: number,
+    mode: MonitoringMode = 'plate',
+  ): Promise<GrabGridDto> {
     const [scopePlates, typeMap] = await Promise.all([
       this.plates.registeredNorms(partnerId),
-      this.registeredTypes(partnerId),
+      this.plates.typeByNorm(partnerId),
     ]);
-    const result = await this.grab.buildGrid(month, year, { scopePlates });
+    const result = await this.grab.buildGrid(month, year, { scopePlates, mode });
     const dto = toGrabGrid(result);
     for (const row of dto.rows) {
       if (!row.vehicleType || row.vehicleType === '-') {
@@ -139,10 +141,11 @@ export class PortalFleetService {
     partnerId: number,
     month: number,
     year: number,
-    compositeKey: string,
+    rowKey: string,
+    mode: MonitoringMode = 'plate',
   ): Promise<GrabDriverDetailDto | null> {
     const scopePlates = await this.plates.registeredNorms(partnerId);
-    const row = await this.grab.findRow(month, year, compositeKey, scopePlates);
+    const row = await this.grab.findRow(month, year, rowKey, scopePlates, mode);
     return row ? toGrabDriverDetail(row) : null;
   }
 }
