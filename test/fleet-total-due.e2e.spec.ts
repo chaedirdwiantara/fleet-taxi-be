@@ -19,10 +19,14 @@ import { fleetExceptions, fleetImportDetails, fleetImports } from '../src/db/sch
 import { ensureDetailPartition } from '../src/db/partitions';
 import { toGojekSummary } from '../src/fleet/fleet-presenter';
 import { GojekGridService } from '../src/fleet/gojek-grid.service';
+import { buildPeriodSummary } from '../src/fleet/range-summary';
 
 const YEAR = 2035;
 const MONTH = 7; // 31 days — mirrors the production case
 const PREV_MONTH = 6;
+
+const dayISO = (m: number, n: number) =>
+  `${YEAR}-${String(m).padStart(2, '0')}-${String(n).padStart(2, '0')}`;
 
 // Plates unique to this suite so the all-time lifecycle scan (MIN/MAX over the
 // whole table) can never pick up another suite's rows for the same key.
@@ -64,8 +68,7 @@ describe('Total Due = Σ imported dues', () => {
       })
       .returning();
 
-    const day = (m: number, n: number) =>
-      `${YEAR}-${String(m).padStart(2, '0')}-${String(n).padStart(2, '0')}`;
+    const day = dayISO;
     const base = { importId: imp!.id, periodYear: YEAR, periodMonth: MONTH };
     const prevBase = { importId: prevImp!.id, periodYear: YEAR, periodMonth: PREV_MONTH };
 
@@ -144,8 +147,19 @@ describe('Total Due = Σ imported dues', () => {
     await app.close();
   });
 
-  const gridFor = (plate: string, day?: number) =>
-    gojek.buildGrid(MONTH, YEAR, { scopePlates: [plate], ...(day !== undefined ? { day } : {}) });
+  const gridFor = (plate: string, dayWindow?: { fromDay: number; toDay: number }) =>
+    gojek.buildGrid(MONTH, YEAR, { scopePlates: [plate], dayWindow });
+
+  /** The single-month range summary for one plate, as the endpoint assembles it. */
+  const rangeFor = async (plate: string, fromDay: number, toDay: number) => {
+    const summary = await buildPeriodSummary(
+      (m, y, dayWindow) => gojek.buildGrid(m, y, { scopePlates: [plate], dayWindow }),
+      MONTH,
+      YEAR,
+      { from: dayISO(MONTH, fromDay), to: dayISO(MONTH, toDay) },
+    );
+    return toGojekSummary(summary.base, summary.range);
+  };
 
   it('bills a mid-month joiner only for the days it was actually billed', async () => {
     // The production report: data exists on 21-24 only, yet the old formula
@@ -234,22 +248,31 @@ describe('Total Due = Σ imported dues', () => {
     }
   });
 
-  it('truncates the Tanggal cutoff to the dues billed on or before that day', async () => {
-    const grid = await gridFor(LATE_JOINER, 22);
-    const summary = toGojekSummary(grid, 22);
-
-    expect(summary.dayFilter!.cumulative.totalDue).toBe(846_000); // d21 + d22
+  it('bills a Tanggal range only for the dues inside it', async () => {
+    const summary = await rangeFor(LATE_JOINER, 1, 22);
+    expect(summary.range!.totalDue).toBe(846_000); // d21 + d22
     expect(summary.globalSummary.totalDue).toBe(1_692_000); // whole month untouched
 
-    // at the last day of the month the cutoff block collapses onto the month
-    const full = await gridFor(LATE_JOINER, 31);
-    const fullSummary = toGojekSummary(full, 31);
-    expect(fullSummary.dayFilter!.cumulative.totalDue).toBe(fullSummary.globalSummary.totalDue);
+    // the range START excludes earlier dues too — not just a cutoff at the end
+    const tail = await rangeFor(LATE_JOINER, 22, 24);
+    expect(tail.range!.totalDue).toBe(1_269_000); // d22 + d23 + d24
+
+    // over the whole month the range block collapses onto the month totals
+    const full = await rangeFor(LATE_JOINER, 1, 31);
+    expect(full.range!.totalDue).toBe(full.globalSummary.totalDue);
   });
 
-  it('bills nothing before the first due day even with the cutoff inside that gap', async () => {
-    const grid = await gridFor(LATE_JOINER, 20);
-    const summary = toGojekSummary(grid, 20);
-    expect(summary.dayFilter!.cumulative.totalDue).toBe(0);
+  it('adds up: two adjacent ranges bill exactly what their union does', async () => {
+    const [head, tail, whole] = await Promise.all([
+      rangeFor(LATE_JOINER, 1, 22),
+      rangeFor(LATE_JOINER, 23, 31),
+      rangeFor(LATE_JOINER, 1, 31),
+    ]);
+    expect(head.range!.totalDue + tail.range!.totalDue).toBe(whole.range!.totalDue);
+  });
+
+  it('bills nothing for a range that ends before the first due day', async () => {
+    const summary = await rangeFor(LATE_JOINER, 1, 20);
+    expect(summary.range!.totalDue).toBe(0);
   });
 });

@@ -902,12 +902,22 @@
             }
           },
           {
-            "name": "day",
+            "name": "dateFrom",
+            "required": false,
+            "in": "query",
+            "description": "Inclusive date range for the summary aggregates (YYYY-MM-DD). Send with dateTo or not at all; may span months; max 92 days. Omitted = whole selected month.",
+            "schema": {
+              "example": "2026-07-01",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
             "required": false,
             "in": "query",
             "schema": {
-              "example": 15,
-              "type": "number"
+              "example": "2026-07-15",
+              "type": "string"
             }
           },
           {
@@ -932,7 +942,7 @@
             "session": []
           }
         ],
-        "summary": "Dashboard aggregates: summary cards + driver activity + charts",
+        "summary": "Dashboard aggregates: summary cards + driver activity + charts, plus the date-range block when ?dateFrom&dateTo is sent",
         "tags": [
           "admin-fleet-gojek"
         ]
@@ -1215,6 +1225,25 @@
             }
           },
           {
+            "name": "dateFrom",
+            "required": false,
+            "in": "query",
+            "description": "Inclusive date range for the summary aggregates (YYYY-MM-DD). Send with dateTo or not at all; may span months; max 92 days. Omitted = whole selected month.",
+            "schema": {
+              "example": "2026-07-01",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "2026-07-15",
+              "type": "string"
+            }
+          },
+          {
             "name": "rentalPartner",
             "required": false,
             "in": "query",
@@ -1236,7 +1265,7 @@
             "session": []
           }
         ],
-        "summary": "Dashboard summary — cards + daily/by-partner charts",
+        "summary": "Dashboard summary — cards + daily/by-partner charts, plus the date-range block when ?dateFrom&dateTo is sent",
         "tags": [
           "admin-fleet-grab"
         ]
@@ -1881,12 +1910,22 @@
             }
           },
           {
-            "name": "day",
+            "name": "dateFrom",
+            "required": false,
+            "in": "query",
+            "description": "Inclusive date range for the summary aggregates (YYYY-MM-DD). Send with dateTo or not at all; may span months; max 92 days. Omitted = whole selected month.",
+            "schema": {
+              "example": "2026-07-01",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
             "required": false,
             "in": "query",
             "schema": {
-              "example": 15,
-              "type": "number"
+              "example": "2026-07-15",
+              "type": "string"
             }
           }
         ],
@@ -2048,6 +2087,64 @@
           }
         ],
         "summary": "Own Grab earnings grid (scoped to registered plates)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/fleet/grab/summary": {
+      "get": {
+        "operationId": "PortalFleetController_grabSummary",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "number"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "number"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "required": false,
+            "in": "query",
+            "description": "Inclusive date range for the summary aggregates (YYYY-MM-DD). Send with dateTo or not at all; may span months; max 92 days. Omitted = whole selected month.",
+            "schema": {
+              "example": "2026-07-01",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "2026-07-15",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Own Grab dashboard aggregates (cards + charts)",
         "tags": [
           "partner-portal"
         ]

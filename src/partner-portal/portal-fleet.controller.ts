@@ -16,7 +16,7 @@ import { SessionUser } from '../auth/session.types';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SessionGuard } from '../common/guards/session.guard';
 import { MONITORING_MODES, parseMonitoringMode } from '../common/util/monitoring-mode';
-import { parsePeriod } from '../common/util/period';
+import { DATE_RANGE_DOC, parseDateRange, parsePeriod } from '../common/util/period';
 import { CreateExceptionDto } from '../fleet/dto/fleet.dto';
 import { PortalAllFleetService } from './portal-all-fleet.service';
 import { PortalFleetService } from './portal-fleet.service';
@@ -158,20 +158,28 @@ export class PortalFleetController {
   @ApiOperation({ summary: 'Own Gojek dashboard aggregates (cards + driver activity + charts)' })
   @ApiQuery({ name: 'month', type: Number, example: 7 })
   @ApiQuery({ name: 'year', type: Number, example: 2026 })
-  @ApiQuery({ name: 'day', type: Number, required: false, example: 15 })
+  @ApiQuery({
+    name: 'dateFrom',
+    required: false,
+    example: '2026-07-01',
+    description: DATE_RANGE_DOC,
+  })
+  @ApiQuery({ name: 'dateTo', required: false, example: '2026-07-15' })
   gojekSummary(
     @CurrentUser() user: SessionUser,
     @Query('month') month: string,
     @Query('year') year: string,
-    @Query('day') dayRaw?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
     const partnerId = requirePartner(user);
     const period = parsePeriod(month, year);
-    const day = dayRaw ? Number(dayRaw) : undefined;
-    if (day !== undefined && (!Number.isInteger(day) || day < 1 || day > 31)) {
-      throw new BadRequestException('day must be an integer 1..31');
-    }
-    return this.fleet.gojekSummary(partnerId, period.month, period.year, day);
+    return this.fleet.gojekSummary(
+      partnerId,
+      period.month,
+      period.year,
+      parseDateRange(dateFrom, dateTo),
+    );
   }
 
   @Get('gojek/exceptions')
@@ -216,6 +224,34 @@ export class PortalFleetController {
     const partnerId = requirePartner(user);
     const period = parsePeriod(month, year);
     return this.fleet.grabGrid(partnerId, period.month, period.year, parseMonitoringMode(mode));
+  }
+
+  @Get('grab/summary')
+  @ApiOperation({ summary: 'Own Grab dashboard aggregates (cards + charts)' })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
+  @ApiQuery({
+    name: 'dateFrom',
+    required: false,
+    example: '2026-07-01',
+    description: DATE_RANGE_DOC,
+  })
+  @ApiQuery({ name: 'dateTo', required: false, example: '2026-07-15' })
+  grabSummary(
+    @CurrentUser() user: SessionUser,
+    @Query('month') month: string,
+    @Query('year') year: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    const partnerId = requirePartner(user);
+    const period = parsePeriod(month, year);
+    return this.fleet.grabSummary(
+      partnerId,
+      period.month,
+      period.year,
+      parseDateRange(dateFrom, dateTo),
+    );
   }
 
   @Get('grab/cell')

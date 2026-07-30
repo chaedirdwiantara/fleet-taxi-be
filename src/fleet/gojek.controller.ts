@@ -17,7 +17,7 @@ import { CheckPolicies } from '../common/decorators/check-policies.decorator';
 import { PoliciesGuard } from '../common/guards/policies.guard';
 import { SessionGuard } from '../common/guards/session.guard';
 import { MONITORING_MODES, parseMonitoringMode } from '../common/util/monitoring-mode';
-import { parsePeriod, toStringArray } from '../common/util/period';
+import { DATE_RANGE_DOC, parseDateRange, parsePeriod, toStringArray } from '../common/util/period';
 import { AdminFleetService } from './admin-fleet.service';
 import { DetailsService } from './details.service';
 import { CreateExceptionDto, EditDriverDto } from './dto/fleet.dto';
@@ -131,26 +131,33 @@ export class GojekController {
 
   @Get('summary')
   @CheckPolicies((a) => a.can('read', 'FleetImport'))
-  @ApiOperation({ summary: 'Dashboard aggregates: summary cards + driver activity + charts' })
+  @ApiOperation({
+    summary:
+      'Dashboard aggregates: summary cards + driver activity + charts, plus the ' +
+      'date-range block when ?dateFrom&dateTo is sent',
+  })
   @ApiQuery({ name: 'month', type: Number, example: 7 })
   @ApiQuery({ name: 'year', type: Number, example: 2026 })
-  @ApiQuery({ name: 'day', type: Number, required: false, example: 15 })
+  @ApiQuery({
+    name: 'dateFrom',
+    required: false,
+    example: '2026-07-01',
+    description: DATE_RANGE_DOC,
+  })
+  @ApiQuery({ name: 'dateTo', required: false, example: '2026-07-15' })
   @ApiQuery({ name: 'rentalPartner', required: false, isArray: true, type: String })
   async summary(
     @Query('month') month: string,
     @Query('year') year: string,
-    @Query('day') dayRaw?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
     @Query('rentalPartner') rentalPartner?: string | string[],
   ) {
     const period = parsePeriod(month, year);
-    const day = dayRaw ? Number(dayRaw) : undefined;
-    if (day !== undefined && (!Number.isInteger(day) || day < 1 || day > 31)) {
-      throw new BadRequestException('day must be an integer 1..31');
-    }
     return this.adminFleet.gojekSummary(
       period.month,
       period.year,
-      day,
+      parseDateRange(dateFrom, dateTo),
       toStringArray(rentalPartner),
     );
   }

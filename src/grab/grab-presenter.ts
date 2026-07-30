@@ -4,7 +4,8 @@
  * presenter serves both the admin and the partner-portal Grab endpoints.
  */
 import type { MonitoringMode } from '../common/util/monitoring-mode';
-import type { GrabGridResult, GrabVehicleRow } from './grab-grid.service';
+import { NO_RENTAL_PARTNER, type GrabGridResult, type GrabVehicleRow } from './grab-grid.service';
+import type { GrabRangeSummaryDto } from './grab-range-summary';
 
 export interface GrabRowDto {
   // `plate|city|driver`, or `drv:<NAME>` when reading per driver.
@@ -139,6 +140,9 @@ export interface GrabSummaryDto {
     totalRides: number;
     activeVehicles: number;
   };
+  // Present only when the request sent ?dateFrom&dateTo; every other field keeps
+  // its whole-month semantics regardless.
+  range?: GrabRangeSummaryDto;
   // Shape deliberately matches FleetChartsDto so the FE chart panel is reused.
   charts: {
     daily: { day: number; total: number }[];
@@ -149,11 +153,10 @@ export interface GrabSummaryDto {
   lastImportDate: string | null;
 }
 
-const NO_RENTAL_PARTNER = 'Tanpa Rental Partner';
-
 export function toGrabSummary(
   result: GrabGridResult,
   lastImportDate: string | null,
+  range?: GrabRangeSummaryDto,
 ): GrabSummaryDto {
   const dailyTotals: Record<number, number> = {};
   const byPartnerMap = new Map<string, number>();
@@ -182,6 +185,7 @@ export function toGrabSummary(
       totalRides,
       activeVehicles: result.rows.length,
     },
+    ...(range ? { range } : {}),
     charts: { daily, byPartner },
     availableRentalPartners: result.availableRentalPartners,
     lastImportDate,

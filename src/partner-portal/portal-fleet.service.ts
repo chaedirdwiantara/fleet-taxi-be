@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import type { MonitoringMode } from '../common/util/monitoring-mode';
+import type { DateRange } from '../common/util/period';
 import { normalizePlate } from '../common/util/plate';
 import { ExceptionsService, type CreateExceptionInput } from '../fleet/exceptions.service';
 import {
@@ -11,13 +12,17 @@ import {
   type GojekSummaryDto,
 } from '../fleet/fleet-presenter';
 import { GojekGridService } from '../fleet/gojek-grid.service';
+import { buildPeriodSummary } from '../fleet/range-summary';
 import { GrabGridService } from '../grab/grab-grid.service';
 import {
   toGrabDriverDetail,
   toGrabGrid,
+  toGrabSummary,
   type GrabDriverDetailDto,
   type GrabGridDto,
+  type GrabSummaryDto,
 } from '../grab/grab-presenter';
+import { buildGrabPeriodSummary } from '../grab/grab-range-summary';
 import { PortalPlatesService } from './portal-plates.service';
 
 /**
@@ -75,11 +80,16 @@ export class PortalFleetService {
     partnerId: number,
     month: number,
     year: number,
-    day?: number,
+    range?: DateRange,
   ): Promise<GojekSummaryDto> {
     const scopePlates = await this.plates.registeredNorms(partnerId);
-    const result = await this.gojek.buildGrid(month, year, { scopePlates, day });
-    return toGojekSummary(result, day);
+    const summary = await buildPeriodSummary(
+      (m, y, dayWindow) => this.gojek.buildGrid(m, y, { scopePlates, dayWindow }),
+      month,
+      year,
+      range,
+    );
+    return toGojekSummary(summary.base, summary.range);
   }
 
   // ── exceptions ("Kelola Jadwal"), scoped to the partner's own plates ───────
@@ -135,6 +145,30 @@ export class PortalFleetService {
       }
     }
     return dto;
+  }
+
+  /**
+   * Own Grab dashboard aggregates — the partner twin of the admin Grab summary,
+   * so both surfaces read the same cards from the same presenter instead of the
+   * portal re-deriving them from the grid's own totals.
+   */
+  async grabSummary(
+    partnerId: number,
+    month: number,
+    year: number,
+    range?: DateRange,
+  ): Promise<GrabSummaryDto> {
+    const scopePlates = await this.plates.registeredNorms(partnerId);
+    const [summary, lastImportDate] = await Promise.all([
+      buildGrabPeriodSummary(
+        (m, y, dayWindow) => this.grab.buildGrid(m, y, { scopePlates, dayWindow }),
+        month,
+        year,
+        range,
+      ),
+      this.grab.lastImportDate(month, year),
+    ]);
+    return toGrabSummary(summary.base, lastImportDate, summary.range);
   }
 
   async grabCell(

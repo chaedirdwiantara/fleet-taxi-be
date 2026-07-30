@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { MonitoringMode } from '../common/util/monitoring-mode';
+import type { DateRange } from '../common/util/period';
 import { RegisteredPlatesService } from '../partners/registered-plates.service';
 import {
   toCellBreakdown,
@@ -10,6 +11,7 @@ import {
   type GojekSummaryDto,
 } from './fleet-presenter';
 import { GojekGridService } from './gojek-grid.service';
+import { buildPeriodSummary } from './range-summary';
 
 /**
  * Admin fleet monitoring, scoped to the union of every partner's registered
@@ -67,16 +69,22 @@ export class AdminFleetService {
   async gojekSummary(
     month: number,
     year: number,
-    day?: number,
+    range?: DateRange,
     rentalPartners?: string[],
   ): Promise<GojekSummaryDto> {
     const { norms, partnerNameByNorm } = await this.registeredPlates.unionScope();
-    const result = await this.gojek.buildGrid(month, year, {
-      scopePlates: norms,
-      partnerNameByNorm,
-      rentalPartners,
-      day,
-    });
-    return toGojekSummary(result, day);
+    const summary = await buildPeriodSummary(
+      (m, y, dayWindow) =>
+        this.gojek.buildGrid(m, y, {
+          scopePlates: norms,
+          partnerNameByNorm,
+          rentalPartners,
+          dayWindow,
+        }),
+      month,
+      year,
+      range,
+    );
+    return toGojekSummary(summary.base, summary.range);
   }
 }
