@@ -7,6 +7,7 @@ import {
   monthBounds,
   nettByType,
   presentRental,
+  rentalDailyIncome,
   slugifyCogsKey,
   sortRentalItems,
   summarizeRentals,
@@ -258,6 +259,92 @@ describe('slugifyCogsKey', () => {
     expect(slugifyCogsKey('M6 / Cloud')).toBe('m6_cloud');
     expect(slugifyCogsKey('Binguo / Neta')).toBe('binguo_neta');
     expect(slugifyCogsKey('  Denza  ')).toBe('denza');
+  });
+});
+
+describe('rentalDailyIncome', () => {
+  it('spreads pricePerDay across the clipped range and bills additionalCost once', () => {
+    const [entry] = rentalDailyIncome(
+      [
+        row({
+          startDate: '2026-07-03',
+          endDate: '2026-07-05',
+          pricePerDay: 450_000,
+          additionalCost: 200_000,
+        }),
+      ],
+      { year: 2026, month: 7 },
+    );
+
+    expect(entry.days).toEqual({ 3: 650_000, 4: 450_000, 5: 450_000 });
+    // gross (3 × 450k) + additionalCost, i.e. the item's `omset`
+    expect(entry.total).toBe(1_550_000);
+  });
+
+  it('matches presentRental().omset for the same month — the two screens agree', () => {
+    const r = row({
+      startDate: '2026-06-28',
+      endDate: '2026-07-04',
+      pricePerDay: 500_000,
+      additionalCost: 150_000,
+    });
+    const [entry] = rentalDailyIncome([r], { year: 2026, month: 7 });
+    const item = presentRental(r, { year: 2026, month: 7 });
+
+    expect(entry.total).toBe(item.omset);
+    // clipped to 1..4 July; the cross-month booking's first billed day is the 1st
+    expect(Object.keys(entry.days)).toEqual(['1', '2', '3', '4']);
+    expect(entry.days[1]).toBe(650_000);
+  });
+
+  it('sums overlapping bookings of the same plate per day', () => {
+    const [entry] = rentalDailyIncome(
+      [
+        row({ id: 1, startDate: '2026-07-01', endDate: '2026-07-02', pricePerDay: 100_000 }),
+        row({ id: 2, startDate: '2026-07-02', endDate: '2026-07-03', pricePerDay: 300_000 }),
+      ],
+      { year: 2026, month: 7 },
+    );
+
+    expect(entry.days).toEqual({ 1: 100_000, 2: 400_000, 3: 300_000 });
+    expect(entry.total).toBe(800_000);
+  });
+
+  it('groups by normalized plate, keeps the latest booking metadata, sorts by total desc', () => {
+    const result = rentalDailyIncome(
+      [
+        row({
+          id: 1,
+          plateNumber: 'B 1 AAA',
+          plateNumberNorm: 'B1AAA',
+          startDate: '2026-07-01',
+          endDate: '2026-07-02',
+          pricePerDay: 100_000,
+        }),
+        row({
+          id: 2,
+          plateNumber: 'B 2 BBB',
+          plateNumberNorm: 'B2BBB',
+          startDate: '2026-07-10',
+          endDate: '2026-07-12',
+          pricePerDay: 900_000,
+          vehicleType: 'Denza',
+        }),
+      ],
+      { year: 2026, month: 7 },
+    );
+
+    expect(result.map((r) => r.plateNorm)).toEqual(['B2BBB', 'B1AAA']);
+    expect(result[0].vehicleType).toBe('Denza');
+  });
+
+  it('drops bookings that do not overlap the month', () => {
+    expect(
+      rentalDailyIncome([row({ startDate: '2026-05-01', endDate: '2026-05-09' })], {
+        year: 2026,
+        month: 7,
+      }),
+    ).toEqual([]);
   });
 });
 

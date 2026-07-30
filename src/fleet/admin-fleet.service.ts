@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { MonitoringMode } from '../common/util/monitoring-mode';
 import { RegisteredPlatesService } from '../partners/registered-plates.service';
 import {
   toCellBreakdown,
@@ -28,7 +29,7 @@ export class AdminFleetService {
   async gojekGrid(
     month: number,
     year: number,
-    filters: { rentalPartners?: string[]; plate?: string } = {},
+    filters: { rentalPartners?: string[]; plate?: string; mode?: MonitoringMode } = {},
   ): Promise<FleetGridDto> {
     const { norms, typeByNorm, partnerNameByNorm } = await this.registeredPlates.unionScope();
     const result = await this.gojek.buildGrid(month, year, {
@@ -54,12 +55,13 @@ export class AdminFleetService {
   async gojekCell(
     month: number,
     year: number,
-    plate: string,
+    rowKey: string,
     day: number,
+    mode: MonitoringMode = 'plate',
   ): Promise<CellBreakdownDto | null> {
     const { norms } = await this.registeredPlates.unionScope();
-    const bucket = await this.gojek.getCell(month, year, plate, day, norms);
-    return bucket ? toCellBreakdown(bucket, plate, day) : null;
+    const bucket = await this.gojek.getCell(month, year, rowKey, day, norms, mode);
+    return bucket ? toCellBreakdown(bucket, rowKey, day) : null;
   }
 
   async gojekSummary(

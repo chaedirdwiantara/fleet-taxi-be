@@ -16,6 +16,7 @@ import { ApiCookieAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import { CheckPolicies } from '../common/decorators/check-policies.decorator';
 import { PoliciesGuard } from '../common/guards/policies.guard';
 import { SessionGuard } from '../common/guards/session.guard';
+import { MONITORING_MODES, parseMonitoringMode } from '../common/util/monitoring-mode';
 import { parsePeriod, toStringArray } from '../common/util/period';
 import { AdminFleetService } from './admin-fleet.service';
 import { DetailsService } from './details.service';
@@ -35,21 +36,24 @@ export class GojekController {
 
   @Get('grid')
   @CheckPolicies((a) => a.can('read', 'FleetImport'))
-  @ApiOperation({ summary: '31-day deposit pivot grid (rows = vehicles)' })
+  @ApiOperation({ summary: '31-day deposit pivot grid (rows = vehicles, or drivers)' })
   @ApiQuery({ name: 'month', type: Number, example: 7 })
   @ApiQuery({ name: 'year', type: Number, example: 2026 })
   @ApiQuery({ name: 'rentalPartner', required: false, isArray: true, type: String })
   @ApiQuery({ name: 'plate', required: false, type: String })
+  @ApiQuery({ name: 'mode', required: false, enum: MONITORING_MODES })
   async grid(
     @Query('month') month: string,
     @Query('year') year: string,
     @Query('rentalPartner') rentalPartner?: string | string[],
     @Query('plate') plate?: string,
+    @Query('mode') mode?: string,
   ) {
     const period = parsePeriod(month, year);
     return this.adminFleet.gojekGrid(period.month, period.year, {
       rentalPartners: toStringArray(rentalPartner),
       plate,
+      mode: parseMonitoringMode(mode),
     });
   }
 
@@ -58,13 +62,18 @@ export class GojekController {
   @ApiOperation({ summary: 'One vehicle+day transaction breakdown (cell-click modal)' })
   @ApiQuery({ name: 'month', type: Number, example: 7 })
   @ApiQuery({ name: 'year', type: Number, example: 2026 })
-  @ApiQuery({ name: 'plate', description: 'Row key: normalized plate or manual_<detailId>' })
+  @ApiQuery({
+    name: 'plate',
+    description: 'Row key: normalized plate, or drv:<NAME> when mode=driver',
+  })
   @ApiQuery({ name: 'day', type: Number, example: 15 })
+  @ApiQuery({ name: 'mode', required: false, enum: MONITORING_MODES })
   async cell(
     @Query('month') month: string,
     @Query('year') year: string,
     @Query('plate') plate: string,
     @Query('day') dayRaw: string,
+    @Query('mode') mode?: string,
   ) {
     const period = parsePeriod(month, year);
     const day = Number(dayRaw);
@@ -72,7 +81,13 @@ export class GojekController {
     if (!Number.isInteger(day) || day < 1 || day > 31) {
       throw new BadRequestException('day must be an integer 1..31');
     }
-    const breakdown = await this.adminFleet.gojekCell(period.month, period.year, plate, day);
+    const breakdown = await this.adminFleet.gojekCell(
+      period.month,
+      period.year,
+      plate,
+      day,
+      parseMonitoringMode(mode),
+    );
     if (!breakdown) throw new NotFoundException('No transactions for that vehicle/day');
     return breakdown;
   }

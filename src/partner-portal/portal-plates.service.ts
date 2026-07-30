@@ -36,6 +36,20 @@ export class PortalPlatesService {
     }));
   }
 
+  /**
+   * norm → vehicle type as entered in Daftarkan Plat. Used to fill the Type
+   * column when the fleet data carries none (no admin fleet target set it), so
+   * the monitoring screens agree with the registration screen.
+   */
+  async typeByNorm(partnerId: number): Promise<Map<string, string>> {
+    const registered = await this.list(partnerId);
+    const map = new Map<string, string>();
+    for (const p of registered) {
+      if (p.vehicleType) map.set(p.plateNumberNorm, p.vehicleType);
+    }
+    return map;
+  }
+
   /** Normalized plates for fleet scoping. Empty ⇒ the partner sees nothing. */
   async registeredNorms(partnerId: number): Promise<string[]> {
     const rows = await this.database.db

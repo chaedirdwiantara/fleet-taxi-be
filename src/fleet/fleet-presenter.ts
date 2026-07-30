@@ -5,6 +5,7 @@
  * re-derives money. One presenter serves BOTH the admin and the partner-portal
  * fleet endpoints, so the wire contract has a single source of truth.
  */
+import type { MonitoringMode } from '../common/util/monitoring-mode';
 import type { DueSegment } from './due-segments';
 import {
   DailyDetailBucket,
@@ -47,6 +48,7 @@ export interface DayCellValueDto {
 }
 
 export interface FleetRowDto {
+  // Row identity: a normalized plate, or `drv:<NAME>` in driver mode.
   plateNorm: string;
   plateRaw: string;
   driverName: string;
@@ -85,8 +87,12 @@ export interface FleetRowDto {
     outstandingMonth: number;
   };
   driverHistory: string[];
-  // Driver keluar: plate no longer appears in the newest import (auto-clears
-  // when it reappears). exitedLastSeen = last import date it was seen (YYYY-MM-DD).
+  // Mirror of driverHistory: the plates behind this row. Plate mode → its own
+  // plate; driver mode → every plate the person drove that month.
+  plateHistory: string[];
+  // Driver keluar: the subject (plate, or person in driver mode) no longer
+  // appears in the newest import — auto-clears when it reappears.
+  // exitedLastSeen = last import date it was seen (YYYY-MM-DD).
   isExited: boolean;
   exitedLastSeen: string | null;
   // Plate first appeared inside the selected month — a new joiner, whose lower
@@ -111,6 +117,9 @@ export interface FleetGridDto {
   month: number;
   year: number;
   daysInMonth: number;
+  // Echo of the requested reading mode ('plate' | 'driver') so the client can
+  // label the identity columns without trusting its own URL state.
+  mode: MonitoringMode;
   rows: FleetRowDto[];
   dailyTotals: Record<number, number>;
   tableTotals: {
@@ -283,6 +292,7 @@ function toFleetRow(row: GojekVehicleRow): FleetRowDto {
       outstandingMonth: row.outstandingMonth,
     },
     driverHistory: row.driverHistory,
+    plateHistory: row.plateHistory,
     isExited: row.isExited,
     exitedLastSeen: row.exitedLastSeen,
     isNewJoiner: row.isNewJoiner,
@@ -295,6 +305,7 @@ export function toFleetGrid(result: GojekGridResult): FleetGridDto {
     month: result.month,
     year: result.year,
     daysInMonth: result.daysInMonth,
+    mode: result.mode,
     rows: result.rows.map(toFleetRow),
     dailyTotals: result.dailyTotals,
     tableTotals: {

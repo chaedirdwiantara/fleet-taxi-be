@@ -3,9 +3,11 @@
  * shape the frontend consumes (features/grab/types.ts). Display-only; one
  * presenter serves both the admin and the partner-portal Grab endpoints.
  */
+import type { MonitoringMode } from '../common/util/monitoring-mode';
 import type { GrabGridResult, GrabVehicleRow } from './grab-grid.service';
 
 export interface GrabRowDto {
+  // `plate|city|driver`, or `drv:<NAME>` when reading per driver.
   compositeKey: string;
   plateNumber: string;
   city: string;
@@ -14,6 +16,9 @@ export interface GrabRowDto {
   tiering: string;
   vehicleType: string;
   driverPhone: string;
+  // Plates behind this row: its own in plate mode, all plates the person drove
+  // (with the city each was driven in) in driver mode.
+  plateHistory: { plate: string; city: string }[];
   days: Record<number, { earning: number }>;
   summary: {
     earning: number;
@@ -33,6 +38,8 @@ export interface GrabGridDto {
   month: number;
   year: number;
   daysInMonth: number;
+  // Echo of the requested reading mode; totals are the same in both.
+  mode: MonitoringMode;
   rows: GrabRowDto[];
   totals: { earning: number; driverFare: number; incentive: number };
   availableRentalPartners: string[];
@@ -68,6 +75,7 @@ function toGrabRow(v: GrabVehicleRow): GrabRowDto {
     tiering: v.tiering,
     vehicleType: v.vehicleType,
     driverPhone: v.details.phone ?? '',
+    plateHistory: v.plateHistory,
     days,
     summary: {
       earning: v.totalEarningCollected,
@@ -89,6 +97,7 @@ export function toGrabGrid(result: GrabGridResult): GrabGridDto {
     month: result.month,
     year: result.year,
     daysInMonth: result.daysInMonth,
+    mode: result.mode,
     rows: result.rows.map(toGrabRow),
     totals: {
       earning: result.totalEarnings,
