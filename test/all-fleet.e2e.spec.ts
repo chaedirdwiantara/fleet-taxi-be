@@ -89,6 +89,10 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
   let otherPartnerId: number;
   let userId: number;
   const agent = () => request.agent(app.getHttpServer());
+  // ONE logged-in agent for the whole suite, and every request awaited in turn.
+  // Supertest boots an ephemeral listener per request, so firing several at once
+  // (Promise.all over two grid reads) resets connections under CI load.
+  let session: request.Agent;
 
   const login = async () => {
     const a = agent();
@@ -102,9 +106,8 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
   const d = (day: number) => `${YEAR}-0${MONTH}-${String(day).padStart(2, '0')}`;
 
   const allFleet = async (mode?: 'plate' | 'driver'): Promise<Grid> => {
-    const a = await login();
     const query = `month=${MONTH}&year=${YEAR}${mode ? `&mode=${mode}` : ''}`;
-    const res = await a.get(`/partner/portal/fleet/all/grid?${query}`).expect(200);
+    const res = await session.get(`/partner/portal/fleet/all/grid?${query}`).expect(200);
     return res.body.data as Grid;
   };
 
@@ -261,6 +264,8 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
       customerName: 'Andi',
       paymentStatus: 'Sudah Dibayar',
     });
+
+    session = await login();
   }, 30_000);
 
   afterAll(async () => {
@@ -338,7 +343,7 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
     expect(grid.residual).toBeNull();
 
     // Rental agrees with Rental Monitoring's own omset for the month
-    const a = await login();
+    const a = session;
     const rentalPage = await a
       .get(`/partner/portal/rentals?month=${MONTH}&year=${YEAR}`)
       .expect(200);
@@ -362,7 +367,8 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
   });
 
   it('driver mode regroups the same money and parks Rental in "Tanpa driver"', async () => {
-    const [plateMode, driverMode] = await Promise.all([allFleet('plate'), allFleet('driver')]);
+    const plateMode = await allFleet('plate');
+    const driverMode = await allFleet('driver');
 
     expect(driverMode.mode).toBe('driver');
     expect(driverMode.rows.map((r) => r.label)).toEqual([BUDI, ASEP]);
@@ -391,7 +397,7 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
   });
 
   it('drills into a cell per source, and 404s on an empty one', async () => {
-    const a = await login();
+    const a = session;
     const cell = await a
       .get(`/partner/portal/fleet/all/cell?month=${MONTH}&year=${YEAR}&key=${PLATE_A}&day=5`)
       .expect(200);
@@ -440,7 +446,8 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
   });
 
   it("never leaks another partner's plates or drivers", async () => {
-    const [plateMode, driverMode] = await Promise.all([allFleet('plate'), allFleet('driver')]);
+    const plateMode = await allFleet('plate');
+    const driverMode = await allFleet('driver');
 
     expect(plateMode.rows.map((r) => r.key)).not.toContain(PLATE_OTHER);
     expect(driverMode.rows.map((r) => r.label)).not.toContain(OTHER_DRIVER);
@@ -448,11 +455,13 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
   });
 
   it('the Gojek grid in driver mode sums to the same money as plate mode', async () => {
-    const a = await login();
-    const [plate, driver] = await Promise.all([
-      a.get(`/partner/portal/fleet/gojek/grid?month=${MONTH}&year=${YEAR}&mode=plate`).expect(200),
-      a.get(`/partner/portal/fleet/gojek/grid?month=${MONTH}&year=${YEAR}&mode=driver`).expect(200),
-    ]);
+    const a = session;
+    const plate = await a
+      .get(`/partner/portal/fleet/gojek/grid?month=${MONTH}&year=${YEAR}&mode=plate`)
+      .expect(200);
+    const driver = await a
+      .get(`/partner/portal/fleet/gojek/grid?month=${MONTH}&year=${YEAR}&mode=driver`)
+      .expect(200);
 
     expect(plate.body.data.mode).toBe('plate');
     expect(driver.body.data.mode).toBe('driver');
@@ -489,7 +498,7 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
   });
 
   it('the Grab grid in driver mode merges a person across plates and cities', async () => {
-    const a = await login();
+    const a = session;
     const driver = await a
       .get(`/partner/portal/fleet/grab/grid?month=${MONTH}&year=${YEAR}&mode=driver`)
       .expect(200);
@@ -503,7 +512,7 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
   });
 
   it('falls back to plate mode on an unknown mode value', async () => {
-    const a = await login();
+    const a = session;
     const res = await a
       .get(`/partner/portal/fleet/all/grid?month=${MONTH}&year=${YEAR}&mode=nonsense`)
       .expect(200);
