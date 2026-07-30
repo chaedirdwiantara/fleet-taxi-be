@@ -419,7 +419,9 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
     expect(driverCell.body.data.total).toBe(800_000);
 
     const residualCell = await a
-      .get(`/partner/portal/fleet/all/cell?month=${MONTH}&year=${YEAR}&key=residual&day=10&mode=driver`)
+      .get(
+        `/partner/portal/fleet/all/cell?month=${MONTH}&year=${YEAR}&key=residual&day=10&mode=driver`,
+      )
       .expect(200);
     expect(residualCell.body.data.label).toBe('Tanpa driver');
     expect(residualCell.body.data.sources[0]).toMatchObject({ source: 'rental', total: 500_000 });
@@ -437,7 +439,7 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
       .expect(400);
   });
 
-  it('never leaks another partner\'s plates or drivers', async () => {
+  it("never leaks another partner's plates or drivers", async () => {
     const [plateMode, driverMode] = await Promise.all([allFleet('plate'), allFleet('driver')]);
 
     expect(plateMode.rows.map((r) => r.key)).not.toContain(PLATE_OTHER);
