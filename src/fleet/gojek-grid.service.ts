@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SQL, and, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
 import { driverRowKey, type MonitoringMode } from '../common/util/monitoring-mode';
+import { clampDayWindow, type DayWindow } from '../common/util/period';
 import { normalizePlate } from '../common/util/plate';
 import { byteCompare } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
@@ -32,6 +33,19 @@ const PLATE_KEY_SQL = sql`d.vehicle_plate_norm`;
 // their money stays visible (and matches driverRowKey('') === 'drv:').
 const DRIVER_KEY_SQL = sql`upper(regexp_replace(btrim(COALESCE(d.driver_name, '')), '\\s+', ' ', 'g'))`;
 const keySql = (mode: MonitoringMode): SQL => (mode === 'driver' ? DRIVER_KEY_SQL : PLATE_KEY_SQL);
+
+/** One row subject's slices of the history-spanning due/paid aggregate. */
+interface CumulativeStats {
+  cumulativeTarget: number;
+  cumulativePaid: number;
+  monthTarget: number;
+  monthPaid: number;
+  // Only present when a day window was requested (see DayWindow).
+  monthTargetToDay?: number;
+  monthPaidToDay?: number;
+  windowTarget?: number;
+  windowPaid?: number;
+}
 
 /**
  * Faithful port of legacy AdminFleetMonitoringController::buildMonitoringData.
@@ -84,10 +98,10 @@ export class GojekGridService {
       // scope so they land in the rawRows queue ("Data Mentah Tanpa Plat").
       // NEVER set for partner scoping — a partner must not see unplated data.
       includeRawManual?: boolean;
-      // Day cutoff (1..daysInMonth) for the dashboard's Tanggal filter: adds
-      // dayCutoff outstanding aggregates bounded at that day. Whole-month
-      // figures are unaffected. Out-of-range values are ignored.
-      day?: number;
+      // This month's slice of the dashboard's Tanggal date-range filter: adds
+      // the dayWindow aggregates bounded to those days. Whole-month figures are
+      // unaffected. Out-of-range values are ignored.
+      dayWindow?: DayWindow;
       // Row subject: one row per plate (default) or per driver. Driver mode
       // regroups the very same import rows, so every table total matches the
       // plate view exactly; only plate-level facts (fleet_targets, exception
@@ -100,17 +114,11 @@ export class GojekGridService {
     const byDriver = mode === 'driver';
 
     const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    // Clamp the optional Tanggal cutoff once; everything below trusts it.
-    const dayCutoffDay =
-      filters.day !== undefined &&
-      Number.isInteger(filters.day) &&
-      filters.day >= 1 &&
-      filters.day <= daysInMonth
-        ? filters.day
-        : undefined;
+    // Clamp the optional Tanggal window once; everything below trusts it.
+    const dayWindow = clampDayWindow(filters.dayWindow, daysInMonth);
 
     if (filters.scopePlates !== undefined && filters.scopePlates.length === 0) {
-      return this.emptyGrid(month, year, mode, dayCutoffDay);
+      return this.emptyGrid(month, year, mode, dayWindow);
     }
 
     const rawRows = await db
@@ -362,7 +370,7 @@ export class GojekGridService {
       ),
     ];
     const [cumulativeMap, lifecycle] = await Promise.all([
-      this.fetchCumulativeStats(pivotKeys, month, year, dayCutoffDay, mode, filters.scopePlates),
+      this.fetchCumulativeStats(pivotKeys, month, year, dayWindow, mode, filters.scopePlates),
       this.fetchLifecycle(mode, filters.scopePlates),
     ]);
 
@@ -440,9 +448,11 @@ export class GojekGridService {
       const cum = cumulativeMap.get(statsKey);
       v.outstanding = (cum?.cumulativeTarget ?? 0) - (cum?.cumulativePaid ?? 0);
       v.outstandingMonth = (cum?.monthTarget ?? 0) - (cum?.monthPaid ?? 0);
-      if (dayCutoffDay !== undefined) {
+      if (dayWindow !== undefined) {
         v.monthTargetToDay = cum?.monthTargetToDay ?? 0;
         v.monthPaidToDay = cum?.monthPaidToDay ?? 0;
+        v.windowTarget = cum?.windowTarget ?? 0;
+        v.windowPaid = cum?.windowPaid ?? 0;
       }
 
       // The obligation IS the billed dues — the same `month_target` slice that
@@ -546,18 +556,23 @@ export class GojekGridService {
     let totalOutstandingMonth = 0;
     let totalOutstandingToDay = 0;
     let totalOutstandingMonthToDay = 0;
+    let totalWindowDue = 0;
+    let totalWindowDelta = 0;
     for (const r of rows) {
       totalDeduction += r.totalDeduction;
       totalCalculatedTarget += r.calculatedTarget;
+      // Mirrors totalCalculatedTarget: the billed obligation, exited rows included.
+      if (dayWindow !== undefined) totalWindowDue += r.windowTarget ?? 0;
       // exited plates report under outstandingDriverKeluar, not the main total
       if (!r.isExited) {
         totalOutstanding += r.outstanding;
         totalOutstandingMonth += r.outstandingMonth;
-        if (dayCutoffDay !== undefined) {
-          // prior-months balance + the month's delta truncated at the cutoff day
+        if (dayWindow !== undefined) {
+          // prior-months balance + the month's delta truncated at the window end
           const monthDeltaToDay = (r.monthTargetToDay ?? 0) - (r.monthPaidToDay ?? 0);
           totalOutstandingToDay += r.outstanding - r.outstandingMonth + monthDeltaToDay;
           totalOutstandingMonthToDay += monthDeltaToDay;
+          totalWindowDelta += (r.windowTarget ?? 0) - (r.windowPaid ?? 0);
         }
       }
       for (const [d, val] of Object.entries(r.dailyCountedData)) {
@@ -591,12 +606,14 @@ export class GojekGridService {
       lastImportDate: lifecycle.lastImportDate,
       availableRentalPartners,
       availablePlates,
-      ...(dayCutoffDay !== undefined
+      ...(dayWindow !== undefined
         ? {
-            dayCutoff: {
-              day: dayCutoffDay,
+            dayWindow: {
+              ...dayWindow,
               totalOutstandingToDay,
               totalOutstandingMonthToDay,
+              totalWindowDue,
+              totalWindowDelta,
             },
           }
         : {}),
@@ -608,7 +625,7 @@ export class GojekGridService {
     month: number,
     year: number,
     mode: MonitoringMode,
-    dayCutoffDay?: number,
+    dayWindow?: DayWindow,
   ): GojekGridResult {
     const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
     const dailyTotals: Record<number, number> = {};
@@ -632,12 +649,14 @@ export class GojekGridService {
       lastImportDate: null,
       availableRentalPartners: [NO_RENTAL_PARTNER],
       availablePlates: [],
-      ...(dayCutoffDay !== undefined
+      ...(dayWindow !== undefined
         ? {
-            dayCutoff: {
-              day: dayCutoffDay,
+            dayWindow: {
+              ...dayWindow,
               totalOutstandingToDay: 0,
               totalOutstandingMonthToDay: 0,
+              totalWindowDue: 0,
+              totalWindowDelta: 0,
             },
           }
         : {}),
@@ -869,35 +888,13 @@ export class GojekGridService {
     keys: string[],
     month: number,
     year: number,
-    // Tanggal cutoff: adds month_*_to_day columns bounded at that day. The
-    // row-wise exclusions below apply to the truncated slices for free.
-    day?: number,
+    // Tanggal window: adds the month_*_to_day and window_* columns. The row-wise
+    // exclusions below apply to the truncated slices for free.
+    dayWindow?: DayWindow,
     mode: MonitoringMode = 'plate',
     scopePlates?: string[],
-  ): Promise<
-    Map<
-      string,
-      {
-        cumulativeTarget: number;
-        cumulativePaid: number;
-        monthTarget: number;
-        monthPaid: number;
-        monthTargetToDay?: number;
-        monthPaidToDay?: number;
-      }
-    >
-  > {
-    const map = new Map<
-      string,
-      {
-        cumulativeTarget: number;
-        cumulativePaid: number;
-        monthTarget: number;
-        monthPaid: number;
-        monthTargetToDay?: number;
-        monthPaidToDay?: number;
-      }
-    >();
+  ): Promise<Map<string, CumulativeStats>> {
+    const map = new Map<string, CumulativeStats>();
     if (!keys.length) return map;
 
     const rowKey = keySql(mode);
@@ -908,30 +905,47 @@ export class GojekGridService {
         )})`
       : sql``;
 
-    const periodStart = `${year}-${String(month).padStart(2, '0')}-01`;
+    const mm = String(month).padStart(2, '0');
+    const periodStart = `${year}-${mm}-01`;
     const nextMonth = month === 12 ? 1 : month + 1;
     const nextYear = month === 12 ? year + 1 : year;
     const periodEndExclusive = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
-    const dayEnd =
-      day !== undefined
-        ? `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-        : null;
+    // Both window bounds as business dates: the range's own slice starts at
+    // windowStart, while the balance-as-of slice always starts at the 1st.
+    const windowStart = dayWindow
+      ? `${year}-${mm}-${String(dayWindow.fromDay).padStart(2, '0')}`
+      : null;
+    const windowEnd = dayWindow
+      ? `${year}-${mm}-${String(dayWindow.toDay).padStart(2, '0')}`
+      : null;
 
-    const dayColumns =
-      dayEnd !== null
+    const windowColumns =
+      windowStart !== null && windowEnd !== null
         ? sql`,
         SUM(CASE
             WHEN d.transaction_date >= ${periodStart}::date
-             AND d.transaction_date <= ${dayEnd}::date
+             AND d.transaction_date <= ${windowEnd}::date
              AND d.type ILIKE '%due%' THEN ABS(d.amount)
             ELSE 0
         END)::bigint AS month_target_to_day,
         SUM(CASE
             WHEN d.transaction_date >= ${periodStart}::date
-             AND d.transaction_date <= ${dayEnd}::date
+             AND d.transaction_date <= ${windowEnd}::date
              AND (d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%') THEN ABS(d.amount)
             ELSE 0
-        END)::bigint AS month_paid_to_day`
+        END)::bigint AS month_paid_to_day,
+        SUM(CASE
+            WHEN d.transaction_date >= ${windowStart}::date
+             AND d.transaction_date <= ${windowEnd}::date
+             AND d.type ILIKE '%due%' THEN ABS(d.amount)
+            ELSE 0
+        END)::bigint AS window_target,
+        SUM(CASE
+            WHEN d.transaction_date >= ${windowStart}::date
+             AND d.transaction_date <= ${windowEnd}::date
+             AND (d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%') THEN ABS(d.amount)
+            ELSE 0
+        END)::bigint AS window_paid`
         : sql``;
 
     const result = await this.database.db.execute(sql`
@@ -950,7 +964,7 @@ export class GojekGridService {
             WHEN d.transaction_date >= ${periodStart}::date
              AND (d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%') THEN ABS(d.amount)
             ELSE 0
-        END)::bigint AS month_paid${dayColumns}
+        END)::bigint AS month_paid${windowColumns}
       FROM fleet_import_details d
       WHERE d.transaction_date < ${periodEndExclusive}::date
         AND (d.type ILIKE '%due%' OR d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%')
@@ -979,10 +993,12 @@ export class GojekGridService {
         cumulativePaid: Number(row.cum_paid),
         monthTarget: Number(row.month_target),
         monthPaid: Number(row.month_paid),
-        ...(dayEnd !== null
+        ...(windowEnd !== null
           ? {
               monthTargetToDay: Number(row.month_target_to_day),
               monthPaidToDay: Number(row.month_paid_to_day),
+              windowTarget: Number(row.window_target),
+              windowPaid: Number(row.window_paid),
             }
           : {}),
       });

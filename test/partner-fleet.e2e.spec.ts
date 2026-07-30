@@ -276,25 +276,34 @@ describe('partner portal fleet monitoring (Daftarkan Plat + scoped grids)', () =
     expect(summary.body.data.globalSummary.totalDeduction).toBe(600000);
     expect(summary.body.data.driverActivity).toBeDefined();
     expect(summary.body.data.charts.daily).toHaveLength(30);
-    expect(summary.body.data.dayFilter).toBeUndefined();
+    expect(summary.body.data.range).toBeUndefined();
 
-    // Tanggal filter: dayFilter appears; whole-month fields keep their
+    // Tanggal filter: the range block appears; whole-month fields keep their
     // semantics. All comparisons stay WITHIN one response — parallel e2e files
     // share the database, so cross-request equality on globally-derived stats
     // (exitedCount, outstandingDriverKeluar) is inherently racy.
+    const mm = String(MONTH).padStart(2, '0');
+    const at = (d: number) => `${YEAR}-${mm}-${String(d).padStart(2, '0')}`;
     const filtered = await a
-      .get(`/partner/portal/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&day=5`)
+      .get(
+        `/partner/portal/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&dateFrom=${at(1)}&dateTo=${at(5)}`,
+      )
       .expect(200);
     expect(filtered.body.data.globalSummary.totalDeduction).toBe(600000);
     expect(filtered.body.data.charts.daily).toHaveLength(30);
-    expect(filtered.body.data.dayFilter.day).toBe(5);
+    expect(filtered.body.data.range.fromDate).toBe(at(1));
+    expect(filtered.body.data.range.toDate).toBe(at(5));
     const daily = filtered.body.data.charts.daily as Array<{ day: number; total: number }>;
-    expect(filtered.body.data.dayFilter.cumulative.totalDeduction).toBe(
+    expect(filtered.body.data.range.totalDeduction).toBe(
       daily.filter((d) => d.day <= 5).reduce((s, d) => s + d.total, 0),
     );
-    expect(filtered.body.data.dayFilter.selectedDay.totalDeduction).toBe(
-      daily.find((d) => d.day === 5)!.total,
-    );
+    // a single-day range is the day's own setoran, not a running total
+    const oneDay = await a
+      .get(
+        `/partner/portal/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&dateFrom=${at(5)}&dateTo=${at(5)}`,
+      )
+      .expect(200);
+    expect(oneDay.body.data.range.totalDeduction).toBe(daily.find((d) => d.day === 5)!.total);
   });
 
   it('edits a registered plate Type (PUT) and the grid overlay follows', async () => {

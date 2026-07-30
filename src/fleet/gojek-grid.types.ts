@@ -23,6 +23,7 @@ export interface ExceptionInfo {
 }
 
 import type { MonitoringMode } from '../common/util/monitoring-mode';
+import type { DayWindow } from '../common/util/period';
 import type { DueSegment } from './due-segments';
 
 export interface GojekVehicleRow {
@@ -78,10 +79,14 @@ export interface GojekVehicleRow {
   // The selected month's own delta: outstanding === previous-month outstanding
   // + outstandingMonth by construction.
   outstandingMonth: number;
-  // Set only when buildGrid ran with a Tanggal day cutoff: the month's due/paid
-  // slices truncated at that day (same window and exclusions as month_*).
+  // Set only when buildGrid ran with a Tanggal day window. Two slices of the
+  // very same SQL aggregate (identical exclusions to month_*):
+  //  • *ToDay  — day 1 .. window end, the balance as it stood at that date;
+  //  • window* — window start .. window end, what the range itself billed/paid.
   monthTargetToDay?: number;
   monthPaidToDay?: number;
+  windowTarget?: number;
+  windowPaid?: number;
   // Driver keluar: the plate stopped appearing in imports (its all-time last
   // transaction date is older than the newest import date anywhere). Reappearing
   // in a later import automatically clears the flag.
@@ -142,13 +147,20 @@ export interface GojekGridResult {
   lastImportDate: string | null; // newest transaction date in the data anywhere
   availableRentalPartners: string[];
   availablePlates: Array<{ plate: string; type: string }>;
-  // Present only when buildGrid ran with a valid Tanggal day cutoff: the
-  // outstanding totals as they stood at the end of that day (active rows only,
-  // same exited-plate partitioning as the whole-month totals above).
-  dayCutoff?: {
-    day: number;
+  // Present only when buildGrid ran with a valid Tanggal day window — the
+  // month's slice of a (possibly cross-month) date-range filter. Each total
+  // mirrors a whole-month total above, narrowed to the window, so the two can
+  // never drift apart: at fromDay=1/toDay=daysInMonth they are equal.
+  dayWindow?: DayWindow & {
+    // Balance at the END of toDay (active rows only, same exited partitioning
+    // as totalOutstanding) and the month-to-date delta behind it.
     totalOutstandingToDay: number;
     totalOutstandingMonthToDay: number;
+    // Σ due billed inside the window over ALL rows — mirrors totalCalculatedTarget.
+    totalWindowDue: number;
+    // Σ (due − paid) inside the window, active rows only — mirrors
+    // totalOutstandingMonth. The window's own contribution to the balance.
+    totalWindowDelta: number;
   };
 }
 

@@ -508,49 +508,58 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     // G7771KA (980000) + G7772KB (300000); G7773KC (250000) and the unplated
     // manual payment (75000) are outside the table, so outside the summary too
     expect(res.body.data.globalSummary.totalDeduction).toBe(1_280_000);
-    // no Tanggal filter sent -> no dayFilter block
-    expect(res.body.data.dayFilter).toBeUndefined();
+    // no Tanggal filter sent -> no range block
+    expect(res.body.data.range).toBeUndefined();
   });
 
-  it('admin summary with a Tanggal cutoff emits dayFilter without touching globalSummary', async () => {
+  it('admin summary with a Tanggal range emits the range block without touching globalSummary', async () => {
     // NOTE: every assertion below compares fields WITHIN one response. E2e
     // files share one database and run in parallel, so two sequential requests
     // can legitimately disagree on globally-derived stats (exitedCount &
     // outstandingDriverKeluar key off MAX(transaction_date) across ALL data) —
     // cross-request equality is inherently flaky here.
     const daysInMonth = new Date(Date.UTC(YEAR, MONTH, 0)).getUTCDate();
+    const mm = String(MONTH).padStart(2, '0');
+    const at = (d: number) => `${YEAR}-${mm}-${String(d).padStart(2, '0')}`;
 
     const res = await agent
-      .get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&day=7`)
+      .get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&dateFrom=${at(5)}&dateTo=${at(7)}`)
       .expect(200);
     const daily = res.body.data.charts.daily as Array<{ day: number; total: number }>;
-    // charts + globalSummary keep whole-month semantics despite the day param
+    // charts + globalSummary keep whole-month semantics despite the range
     expect(daily).toHaveLength(daysInMonth);
     expect(res.body.data.globalSummary.totalDeduction).toBe(daily.reduce((s, d) => s + d.total, 0));
 
-    const dayFilter = res.body.data.dayFilter;
-    expect(dayFilter.day).toBe(7);
-    // cumulative setoran = Σ charts.daily[1..7]; selectedDay = day 7's bucket
-    const cumTo7 = daily.filter((d) => d.day <= 7).reduce((s, d) => s + d.total, 0);
-    expect(dayFilter.cumulative.totalDeduction).toBe(cumTo7);
-    expect(dayFilter.selectedDay.totalDeduction).toBe(daily.find((d) => d.day === 7)!.total);
+    const range = res.body.data.range;
+    expect(range.fromDate).toBe(at(5));
+    expect(range.toDate).toBe(at(7));
+    expect(range.days).toBe(3);
+    // setoran = Σ charts.daily[5..7], and the range's own per-DATE series matches
+    const inRange = daily.filter((d) => d.day >= 5 && d.day <= 7);
+    expect(range.totalDeduction).toBe(inRange.reduce((s, d) => s + d.total, 0));
+    expect(range.charts.daily).toEqual(inRange.map((d) => ({ date: at(d.day), total: d.total })));
 
-    // invariant: at day === daysInMonth the cumulative block equals the SAME
-    // response's globalSummary (single snapshot — no cross-request race)
+    // invariant: over the whole month the range block equals the SAME response's
+    // globalSummary (single snapshot — no cross-request race)
     const full = await agent
-      .get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&day=${daysInMonth}`)
+      .get(
+        `/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&dateFrom=${at(1)}&dateTo=${at(daysInMonth)}`,
+      )
       .expect(200);
     const g = full.body.data.globalSummary;
-    expect(full.body.data.dayFilter.cumulative).toEqual({
-      totalDeduction: g.totalDeduction,
-      totalDue: g.totalDue,
-      totalOutstanding: g.totalOutstanding,
-      totalOutstandingMonth: g.totalOutstandingMonth,
-    });
+    expect(full.body.data.range.totalDeduction).toBe(g.totalDeduction);
+    expect(full.body.data.range.totalDue).toBe(g.totalDue);
+    expect(full.body.data.range.outstandingAsOf).toBe(g.totalOutstanding);
+    expect(full.body.data.range.outstandingDelta).toBe(g.totalOutstandingMonth);
+  });
 
-    // garbage day is rejected, out-of-range-but-valid-int day is ignored upstream
-    await agent.get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&day=abc`).expect(400);
-    await agent.get(`/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}&day=0`).expect(400);
+  it('rejects a malformed, inverted, half-specified or oversized Tanggal range', async () => {
+    const base = `/admin/fleet/gojek/summary?month=${MONTH}&year=${YEAR}`;
+    await agent.get(`${base}&dateFrom=abc&dateTo=${YEAR}-07-05`).expect(400);
+    await agent.get(`${base}&dateFrom=${YEAR}-07-05`).expect(400); // dateTo missing
+    await agent.get(`${base}&dateFrom=${YEAR}-07-10&dateTo=${YEAR}-07-01`).expect(400); // inverted
+    await agent.get(`${base}&dateFrom=${YEAR}-02-30&dateTo=${YEAR}-03-01`).expect(400); // no such day
+    await agent.get(`${base}&dateFrom=${YEAR}-01-01&dateTo=${YEAR}-12-31`).expect(400); // > 92 days
   });
 
   it('admin cell 404s for a plate no partner registered (HTTP)', async () => {

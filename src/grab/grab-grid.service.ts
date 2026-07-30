@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { driverRowKey, type MonitoringMode } from '../common/util/monitoring-mode';
+import { clampDayWindow, type DayWindow } from '../common/util/period';
 import { normalizePlate } from '../common/util/plate';
 import { byteCompare } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
@@ -47,10 +48,18 @@ export interface GrabVehicleRow {
   };
 }
 
+/** Label for rows no rental partner claims — the pivot leaves those blank. */
+export const NO_RENTAL_PARTNER = 'Tanpa Rental Partner';
+
 export interface GrabGridResult {
   month: number;
   year: number;
   daysInMonth: number;
+  // Echo of the clamped Tanggal day window, when one was requested: every money
+  // total below then covers ONLY those days. Row identity and the dropdown
+  // options stay month-wide, so narrowing the window never hides a vehicle from
+  // the filters.
+  dayWindow?: DayWindow;
   // Which subject the rows describe; totals are identical in both modes.
   mode: MonitoringMode;
   rows: GrabVehicleRow[];
@@ -96,17 +105,25 @@ export class GrabGridService {
       scopePlates?: string[];
       // Row subject: one row per plate+city+driver (default) or per driver.
       mode?: MonitoringMode;
+      // This month's slice of the dashboard's Tanggal date-range filter. Only
+      // the money/ride accumulation is narrowed to it — see GrabGridResult.
+      dayWindow?: DayWindow;
     } = {},
   ): Promise<GrabGridResult> {
     const { db } = this.database;
     const mode: MonitoringMode = filters.mode ?? 'plate';
     const byDriver = mode === 'driver';
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const dayWindow = clampDayWindow(filters.dayWindow, daysInMonth);
+    const inWindow = (day: number): boolean =>
+      !dayWindow || (day >= dayWindow.fromDay && day <= dayWindow.toDay);
 
     if (filters.scopePlates !== undefined && filters.scopePlates.length === 0) {
       return {
         month,
         year,
-        daysInMonth: new Date(Date.UTC(year, month, 0)).getUTCDate(),
+        daysInMonth,
+        ...(dayWindow ? { dayWindow } : {}),
         mode,
         rows: [],
         totalEarnings: 0,
@@ -196,6 +213,10 @@ export class GrabGridService {
         if (row.tiering) v.tiering = row.tiering;
         if (row.driverPhoneNumber) v.details.phone = row.driverPhoneNumber;
       }
+
+      // Outside the Tanggal window the row still exists (identity + dropdown
+      // options are month-wide), it just contributes no money.
+      if (!inWindow(day)) continue;
 
       const earning = row.totalEarningCollected ?? 0;
       v.dailyData[day] = (v.dailyData[day] ?? 0) + earning;
@@ -287,7 +308,8 @@ export class GrabGridService {
     return {
       month,
       year,
-      daysInMonth: new Date(Date.UTC(year, month, 0)).getUTCDate(),
+      daysInMonth,
+      ...(dayWindow ? { dayWindow } : {}),
       mode,
       rows: rows.map((r) => {
         const { metaDate, ...rest } = r;

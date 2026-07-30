@@ -13,6 +13,7 @@ import {
   GojekVehicleRow,
   NO_RENTAL_PARTNER,
 } from './gojek-grid.types';
+import type { RangeSummaryDto } from './range-summary';
 
 // ---- API DTOs (mirror the frontend fleet types) -----------------------------
 
@@ -170,28 +171,12 @@ export interface ExitedDriverDto {
   outstanding: number;
 }
 
-// Tanggal filter aggregates — emitted only when the request carried a valid
-// `day`. `cumulative` mirrors GlobalSummaryDto's semantics truncated at that
-// day (at day === daysInMonth it equals globalSummary exactly); `selectedDay`
-// is that single day's counted setoran.
-export interface DayFilterSummaryDto {
-  day: number;
-  cumulative: {
-    totalDeduction: number;
-    totalDue: number;
-    totalOutstanding: number;
-    totalOutstandingMonth: number;
-  };
-  selectedDay: {
-    totalDeduction: number;
-  };
-}
-
 export interface GojekSummaryDto {
   globalSummary: GlobalSummaryDto;
-  // Present only when the request sent a valid `day` (Tanggal filter); all
-  // other fields keep their whole-month semantics regardless.
-  dayFilter?: DayFilterSummaryDto;
+  // Present only when the request sent ?dateFrom&dateTo (the Tanggal filter);
+  // every other field keeps its whole-month semantics regardless, so the
+  // all-time Driver Keluar card and the partner options stay valid.
+  range?: RangeSummaryDto;
   driverActivity: DriverActivityDto;
   charts: FleetChartsDto;
   // Filter options for the dashboard's rental-partner select — computed over
@@ -357,37 +342,12 @@ function toCharts(result: GojekGridResult): FleetChartsDto {
   return { daily, byPartner };
 }
 
-function toDayFilterSummary(result: GojekGridResult): DayFilterSummaryDto | undefined {
-  const cutoff = result.dayCutoff;
-  if (!cutoff) return undefined;
-  const { day } = cutoff;
-  let totalDeduction = 0;
-  for (let d = 1; d <= day; d++) totalDeduction += result.dailyTotals[d] ?? 0;
-  // Same SQL slice as calculatedTarget, truncated at the cutoff — populated by
-  // buildGrid exactly when a day cutoff was requested, which is exactly when
-  // this runs. At day === daysInMonth the two predicates select the same rows,
-  // so `dayFilter.cumulative === globalSummary` holds structurally.
-  const totalDue = result.rows.reduce((sum, row) => sum + (row.monthTargetToDay ?? 0), 0);
-  return {
-    day,
-    cumulative: {
-      totalDeduction,
-      totalDue,
-      totalOutstanding: cutoff.totalOutstandingToDay,
-      totalOutstandingMonth: cutoff.totalOutstandingMonthToDay,
-    },
-    selectedDay: {
-      totalDeduction: result.dailyTotals[day] ?? 0,
-    },
-  };
-}
-
-function toDriverActivity(result: GojekGridResult, day?: number): DriverActivityDto {
+function toDriverActivity(result: GojekGridResult): DriverActivityDto {
   const dim = result.daysInMonth;
   const availableDays = Array.from({ length: dim }, (_, i) => i + 1);
   let maxDayInData = 1;
   for (let d = 1; d <= dim; d++) if ((result.dailyTotals[d] ?? 0) > 0) maxDayInData = d;
-  const selectedDay = day && day >= 1 && day <= dim ? day : maxDayInData;
+  const selectedDay = maxDayInData;
 
   // Same predicate for both partitions guarantees active + inactive === total.
   const active = result.rows.filter((r) => (r.dailyCountedData[selectedDay] ?? 0) > 0);
@@ -413,12 +373,17 @@ function toDriverActivity(result: GojekGridResult, day?: number): DriverActivity
   };
 }
 
-export function toGojekSummary(result: GojekGridResult, day?: number): GojekSummaryDto {
-  const dayFilter = toDayFilterSummary(result);
+/**
+ * @param result the SELECTED month's grid — every whole-month field comes from it.
+ * @param range  pre-combined date-range aggregates (see combineGojekRange); the
+ *   range may span other months entirely, which is why it arrives ready-made
+ *   instead of being derived from `result`.
+ */
+export function toGojekSummary(result: GojekGridResult, range?: RangeSummaryDto): GojekSummaryDto {
   return {
     globalSummary: toGlobalSummary(result),
-    ...(dayFilter ? { dayFilter } : {}),
-    driverActivity: toDriverActivity(result, day),
+    ...(range ? { range } : {}),
+    driverActivity: toDriverActivity(result),
     charts: toCharts(result),
     availableRentalPartners: result.availableRentalPartners,
     exitedDrivers: result.exitedDrivers,
