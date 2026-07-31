@@ -53,6 +53,50 @@ export const HANDOVER_COMPARISON_PAIR: Partial<Record<HandoverType, HandoverType
   return_from_driver: 'delivery_to_driver',
 };
 
+/**
+ * The two sides of a handover. `partner` is the partner's own officer
+ * (`partner_staff_name`, signature kind `signature_partner`); `counterpart` is
+ * the external customer or driver (`counterpart_name`, `signature_counterpart`).
+ */
+export type HandoverParty = 'partner' | 'counterpart';
+
+/**
+ * Who hands the unit over, per handover type: the partner delivers, the
+ * counterpart returns. The receiver is always the other side — so "penyerah"
+ * and "penerima" are derived from this single mapping instead of being stored
+ * twice.
+ */
+export const HANDOVER_GIVER: Record<HandoverType, HandoverParty> = {
+  delivery_to_customer: 'partner',
+  delivery_to_driver: 'partner',
+  return_from_customer: 'counterpart',
+  return_from_driver: 'counterpart',
+};
+
+export function handoverGiver(handoverType: string): HandoverParty {
+  return HANDOVER_GIVER[handoverType as HandoverType] ?? 'partner';
+}
+
+export function handoverReceiver(handoverType: string): HandoverParty {
+  return handoverGiver(handoverType) === 'partner' ? 'counterpart' : 'partner';
+}
+
+/** What the external side of the handover is — drives the FE's driver picker. */
+export const HANDOVER_COUNTERPART_KIND: Record<HandoverType, 'customer' | 'driver'> = {
+  delivery_to_customer: 'customer',
+  return_from_customer: 'customer',
+  delivery_to_driver: 'driver',
+  return_from_driver: 'driver',
+};
+
+/** Display label of one side, e.g. "Petugas Partner" / "Driver". */
+export function handoverPartyLabel(handoverType: string, party: HandoverParty): string {
+  if (party === 'partner') return 'Petugas Partner';
+  return HANDOVER_COUNTERPART_KIND[handoverType as HandoverType] === 'driver'
+    ? 'Driver'
+    : 'Customer';
+}
+
 export const CHECKPOINT_MEDIA_KINDS = [
   'photo',
   'signature_partner',

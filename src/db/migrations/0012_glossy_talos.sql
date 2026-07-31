@@ -1,0 +1,1 @@
+ALTER TABLE "checkpoints" ADD COLUMN "partner_staff_name" text;

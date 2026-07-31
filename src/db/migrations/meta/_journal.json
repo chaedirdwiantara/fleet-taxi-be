@@ -85,6 +85,13 @@
       "when": 1784463586591,
       "tag": "0011_rare_black_bolt",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785459925782,
+      "tag": "0012_glossy_talos",
+      "breakpoints": true
     }
   ]
 }

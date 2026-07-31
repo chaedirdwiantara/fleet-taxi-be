@@ -4,7 +4,13 @@ import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validato
 
 /** Partial header update while the checkpoint is still a draft. */
 export class UpdateCheckpointDto {
-  @ApiPropertyOptional({ example: 'Budi Santoso' })
+  @ApiPropertyOptional({ example: 'Andi Pratama', description: 'Nama petugas partner' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  partnerStaffName?: string;
+
+  @ApiPropertyOptional({ example: 'Budi Santoso', description: 'Nama pihak eksternal' })
   @IsOptional()
   @IsString()
   @MaxLength(120)
