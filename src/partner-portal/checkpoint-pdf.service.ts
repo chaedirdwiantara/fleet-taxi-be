@@ -4,7 +4,10 @@ import {
   CheckpointPointKey,
   CHECKPOINT_POINT_LABELS,
   HANDOVER_TYPE_LABELS,
+  HandoverParty,
   HandoverType,
+  handoverGiver,
+  handoverPartyLabel,
 } from './checkpoint.constants';
 import { CheckpointDetail, CheckpointMediaView } from './portal-checkpoints.service';
 
@@ -83,15 +86,26 @@ export class CheckpointPdfService {
       ),
     );
 
-    const signature = (kind: string, title: string) => {
+    // Penyerah/penerima are derived from the handover direction: the partner's
+    // own officer delivers, the counterpart returns.
+    const giver = handoverGiver(detail.handoverType);
+    const receiver: HandoverParty = giver === 'partner' ? 'counterpart' : 'partner';
+    const partyLabel = (party: HandoverParty) => handoverPartyLabel(detail.handoverType, party);
+    const partyName = (party: HandoverParty) =>
+      (party === 'partner' ? detail.partnerStaffName : detail.counterpartName) ?? '-';
+
+    const signature = (party: HandoverParty, role: string) => {
+      const kind = party === 'partner' ? 'signature_partner' : 'signature_counterpart';
       const sig = detail.signatures.find((s) => s.kind === kind && s.status === 'uploaded');
       return h(
         View,
         { style: { flex: 1, alignItems: 'center' } },
-        h(Text, { style: { fontSize: 9, marginBottom: 4 } }, title),
+        h(Text, { style: { fontSize: 9, fontWeight: 700 } }, role),
+        h(Text, { style: { fontSize: 8, color: '#666', marginBottom: 4 } }, partyLabel(party)),
         sig && buffers.get(sig.id)
           ? h(Image, { src: buffers.get(sig.id)!, style: { width: 140, height: 70 } })
           : h(View, { style: { width: 140, height: 70, borderBottom: 0.5 } }),
+        h(Text, { style: { fontSize: 9, marginTop: 4 } }, `( ${partyName(party)} )`),
       );
     };
 
@@ -119,8 +133,9 @@ export class CheckpointPdfService {
         h(
           View,
           { style: { flexDirection: 'row' } },
-          field('Pihak Penerima/Penyerah', detail.counterpartName ?? '-'),
-          field('Telepon', detail.counterpartPhone ?? '-'),
+          field(`Penyerah (${partyLabel(giver)})`, partyName(giver)),
+          field(`Penerima (${partyLabel(receiver)})`, partyName(receiver)),
+          field(`Telepon ${partyLabel('counterpart')}`, detail.counterpartPhone ?? '-'),
         ),
         h(
           View,
@@ -138,8 +153,8 @@ export class CheckpointPdfService {
         h(
           View,
           { wrap: false, style: { flexDirection: 'row', marginTop: 16 } },
-          signature('signature_partner', 'Petugas Partner'),
-          signature('signature_counterpart', 'Pihak Penerima/Penyerah'),
+          signature(giver, 'Penyerah'),
+          signature(receiver, 'Penerima'),
         ),
       ),
     );

@@ -36,7 +36,11 @@ export const checkpoints = pgTable(
     // delivery_to_customer | return_from_customer | delivery_to_driver | return_from_driver
     handoverType: text('handover_type').notNull(),
     status: text('status').notNull().default('draft'), // draft | completed
-    counterpartName: text('counterpart_name'),
+    // The two sides of the handover. Which one is the "penyerah" and which the
+    // "penerima" follows from handoverType (checkpoint.constants HANDOVER_GIVER):
+    // the partner delivers, the counterpart returns.
+    partnerStaffName: text('partner_staff_name'), // partner's own officer
+    counterpartName: text('counterpart_name'), // external customer/driver
     counterpartPhone: text('counterpart_phone'),
     odometerKm: integer('odometer_km'), // required at completion
     batteryPercent: smallint('battery_percent'), // 0..100, required at completion

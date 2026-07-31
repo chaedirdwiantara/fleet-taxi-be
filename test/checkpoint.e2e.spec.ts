@@ -141,12 +141,16 @@ describe('partner checkpoints (handover inspection)', () => {
       .send({
         plateNumber: PLATE,
         handoverType: 'delivery_to_customer',
+        partnerStaffName: 'Andi',
         counterpartName: 'Budi',
       })
       .expect(201);
     const detail = res.body.data;
     deliveryId = detail.id;
     expect(detail.status).toBe('draft');
+    // Both sides of the handover are stored separately
+    expect(detail.partnerStaffName).toBe('Andi');
+    expect(detail.counterpartName).toBe('Budi');
     expect(detail.points).toHaveLength(10);
     expect(detail.points[0].pointKey).toBe('exterior_front');
     expect(detail.points.every((p: { passed: null }) => p.passed === null)).toBe(true);
@@ -168,7 +172,32 @@ describe('partner checkpoints (handover inspection)', () => {
     const details = res.body.error.details as Array<{ field: string; message: string }>;
     // 10 unassessed + 10 photoless + 2 signatures
     expect(details).toHaveLength(22);
-    expect(details.some((d) => d.field === 'signature_partner')).toBe(true);
+    // On a delivery the partner's officer is the penyerah, the counterpart the penerima
+    expect(details.find((d) => d.field === 'signature_partner')?.message).toBe(
+      'Tanda tangan penyerah (Petugas Partner) belum ada',
+    );
+    expect(details.find((d) => d.field === 'signature_counterpart')?.message).toBe(
+      'Tanda tangan penerima (Customer) belum ada',
+    );
+  });
+
+  it('flips penyerah/penerima on a return from a driver', async () => {
+    const created = await agentA
+      .post('/partner/portal/checkpoints')
+      .send({ plateNumber: PLATE, handoverType: 'return_from_driver' })
+      .expect(201);
+    const res = await agentA
+      .post(`/partner/portal/checkpoints/${created.body.data.id}/complete`)
+      .send({ odometerKm: 1500, batteryPercent: 90 })
+      .expect(400);
+    const details = res.body.error.details as Array<{ field: string; message: string }>;
+    expect(details.find((d) => d.field === 'signature_counterpart')?.message).toBe(
+      'Tanda tangan penyerah (Driver) belum ada',
+    );
+    expect(details.find((d) => d.field === 'signature_partner')?.message).toBe(
+      'Tanda tangan penerima (Petugas Partner) belum ada',
+    );
+    await agentA.delete(`/partner/portal/checkpoints/${created.body.data.id}`).expect(200);
   });
 
   it('walks the full draft lifecycle: points, photos, signatures, complete', async () => {

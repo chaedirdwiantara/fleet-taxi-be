@@ -4143,10 +4143,15 @@
             ],
             "example": "delivery_to_customer"
           },
+          "partnerStaffName": {
+            "type": "string",
+            "example": "Andi Pratama",
+            "description": "Nama petugas partner — penyerah on a delivery, penerima on a return"
+          },
           "counterpartName": {
             "type": "string",
             "example": "Budi Santoso",
-            "description": "Nama pihak penerima/penyerah"
+            "description": "Nama pihak eksternal (customer/driver) — penerima on a delivery, penyerah on a return"
           },
           "counterpartPhone": {
             "type": "string",
@@ -4161,9 +4166,15 @@
       "UpdateCheckpointDto": {
         "type": "object",
         "properties": {
+          "partnerStaffName": {
+            "type": "string",
+            "example": "Andi Pratama",
+            "description": "Nama petugas partner"
+          },
           "counterpartName": {
             "type": "string",
-            "example": "Budi Santoso"
+            "example": "Budi Santoso",
+            "description": "Nama pihak eksternal"
           },
           "counterpartPhone": {
             "type": "string",

@@ -13,7 +13,20 @@ export class CreateCheckpointDto {
   @IsIn(HANDOVER_TYPES)
   handoverType!: HandoverType;
 
-  @ApiPropertyOptional({ example: 'Budi Santoso', description: 'Nama pihak penerima/penyerah' })
+  @ApiPropertyOptional({
+    example: 'Andi Pratama',
+    description: 'Nama petugas partner — penyerah on a delivery, penerima on a return',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  partnerStaffName?: string;
+
+  @ApiPropertyOptional({
+    example: 'Budi Santoso',
+    description:
+      'Nama pihak eksternal (customer/driver) — penerima on a delivery, penyerah on a return',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(120)

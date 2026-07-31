@@ -19,7 +19,10 @@ import {
   CHECKPOINT_PRESIGN_PUT_TTL_SEC,
   CheckpointPointKey,
   HANDOVER_COMPARISON_PAIR,
+  HandoverParty,
   HandoverType,
+  handoverGiver,
+  handoverPartyLabel,
 } from './checkpoint.constants';
 import { CompleteCheckpointDto } from './dto/complete-checkpoint.dto';
 import { CreateCheckpointDto } from './dto/create-checkpoint.dto';
@@ -54,6 +57,7 @@ export interface CheckpointDetail {
   plateNumberNorm: string;
   handoverType: string;
   status: string;
+  partnerStaffName: string | null;
   counterpartName: string | null;
   counterpartPhone: string | null;
   odometerKm: number | null;
@@ -182,6 +186,7 @@ export class PortalCheckpointsService {
           plateNumber: dto.plateNumber.trim(),
           plateNumberNorm: norm,
           handoverType: dto.handoverType,
+          partnerStaffName: dto.partnerStaffName?.trim() || null,
           counterpartName: dto.counterpartName?.trim() || null,
           counterpartPhone: dto.counterpartPhone?.trim() || null,
         })
@@ -213,6 +218,9 @@ export class PortalCheckpointsService {
     await this.database.db
       .update(checkpoints)
       .set({
+        ...(dto.partnerStaffName !== undefined && {
+          partnerStaffName: dto.partnerStaffName.trim() || null,
+        }),
         ...(dto.counterpartName !== undefined && {
           counterpartName: dto.counterpartName.trim() || null,
         }),
@@ -405,7 +413,7 @@ export class PortalCheckpointsService {
     id: number,
     dto: CompleteCheckpointDto,
   ): Promise<CheckpointDetail> {
-    await this.ownedDraft(partnerId, id);
+    const draft = await this.ownedDraft(partnerId, id);
 
     const [points, media] = await Promise.all([
       this.database.db.select().from(checkpointPoints).where(eq(checkpointPoints.checkpointId, id)),
@@ -428,15 +436,13 @@ export class PortalCheckpointsService {
       if (!photosByPoint.get(p.id))
         details.push({ field: p.pointKey, message: `${label}: belum ada foto` });
     }
+    const giver = handoverGiver(draft.handoverType);
     for (const kind of ['signature_partner', 'signature_counterpart'] as const) {
       if (!media.some((m) => m.kind === kind)) {
-        details.push({
-          field: kind,
-          message:
-            kind === 'signature_partner'
-              ? 'Tanda tangan petugas partner belum ada'
-              : 'Tanda tangan pihak penerima/penyerah belum ada',
-        });
+        const party: HandoverParty = kind === 'signature_partner' ? 'partner' : 'counterpart';
+        const role = party === giver ? 'penyerah' : 'penerima';
+        const who = handoverPartyLabel(draft.handoverType, party);
+        details.push({ field: kind, message: `Tanda tangan ${role} (${who}) belum ada` });
       }
     }
     if (details.length) {
@@ -590,6 +596,7 @@ export class PortalCheckpointsService {
       plateNumberNorm: row.plateNumberNorm,
       handoverType: row.handoverType,
       status: row.status,
+      partnerStaffName: row.partnerStaffName,
       counterpartName: row.counterpartName,
       counterpartPhone: row.counterpartPhone,
       odometerKm: row.odometerKm,
