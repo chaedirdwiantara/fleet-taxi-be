@@ -27,6 +27,8 @@ import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto';
 import { UpsertCogsDefaultDto } from './dto/upsert-cogs-default.dto';
 import { ListRentalsFilters, PartnerRentalsService } from './partner-rentals.service';
 import { RentalCogsDefaultsService } from './rental-cogs-defaults.service';
+import { invoiceFileName } from './rental-invoice';
+import { RentalInvoicePdfService } from './rental-invoice-pdf.service';
 import { RentalPaymentProofsService } from './rental-payment-proofs.service';
 import { RentalsExportService } from './rentals-export.service';
 
@@ -73,6 +75,7 @@ export class PartnerRentalsController {
     private readonly cogsDefaults: RentalCogsDefaultsService,
     private readonly exportService: RentalsExportService,
     private readonly proofs: RentalPaymentProofsService,
+    private readonly invoicePdf: RentalInvoicePdfService,
   ) {}
 
   @Get('cogs-defaults')
@@ -245,6 +248,20 @@ export class PartnerRentalsController {
       dto.paymentStatus,
       dto.paymentProofIds,
     );
+  }
+
+  @Get(':id/invoice')
+  @ApiOperation({ summary: 'Download the PDF invoice of one own PAID rental' })
+  async invoice(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<StreamableFile> {
+    const invoice = await this.rentalsService.invoiceFor(requirePartner(user), id);
+    const buffer = await this.invoicePdf.toPdf(invoice);
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${invoiceFileName(invoice.invoiceNumber)}"`,
+    });
   }
 
   private parseFilters(

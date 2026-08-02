@@ -7,8 +7,9 @@ import {
 import { and, asc, eq, gte, isNotNull, lte, ne, sql } from 'drizzle-orm';
 import { normalizePlate } from '../common/util/plate';
 import { DatabaseService } from '../db/database.service';
-import { rentals } from '../db/schema';
+import { partners, rentals } from '../db/schema';
 import { CreateRentalDto } from './dto/create-rental.dto';
+import { buildRentalInvoice, RentalInvoiceDto } from './rental-invoice';
 import { RentalPaymentProofsService } from './rental-payment-proofs.service';
 import { RENTAL_PROOF_REQUIRED_MESSAGE } from './rental-proof.constants';
 import {
@@ -228,6 +229,37 @@ export class PartnerRentalsService {
       return updated;
     });
     return presentRental(row, undefined, await this.proofs.viewsForRental(id));
+  }
+
+  /**
+   * Invoice model for one own rental. Only settled transactions may be
+   * billed — an invoice for an unpaid rental would be a payment request, a
+   * different document with different legal weight.
+   *
+   * The rental is presented UNCLIPPED: the customer is billed for the whole
+   * booked range, not for the slice that happens to fall in the month the
+   * dashboard is currently showing.
+   */
+  async invoiceFor(partnerId: number, id: number): Promise<RentalInvoiceDto> {
+    const [row] = await this.database.db
+      .select()
+      .from(rentals)
+      .where(and(eq(rentals.id, id), eq(rentals.partnerId, partnerId)));
+    if (!row) throw new NotFoundException('Rental tidak ditemukan');
+    if (row.paymentStatus !== 'Sudah Dibayar') {
+      throw new ConflictException(
+        'Invoice hanya tersedia untuk rental yang sudah dibayar. Tandai rental ini "Sudah Dibayar" terlebih dahulu.',
+      );
+    }
+
+    const [partner] = await this.database.db
+      .select({ name: partners.name, code: partners.code })
+      .from(partners)
+      .where(eq(partners.id, partnerId));
+    if (!partner) throw new NotFoundException('Partner tidak ditemukan');
+
+    const item = presentRental(row, undefined, await this.proofs.viewsForRental(id));
+    return buildRentalInvoice(item, partner, new Date());
   }
 
   // ---- internals -------------------------------------------------------------

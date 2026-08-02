@@ -70,6 +70,7 @@ const EXPECTED_OPERATIONS = [
   'GET /partner/portal/rentals/cogs-defaults',
   'GET /partner/portal/rentals/export',
   'GET /partner/portal/rentals/proofs/{proofId}/file',
+  'GET /partner/portal/rentals/{id}/invoice',
   'GET /partner/v1/orders',
   'GET /partner/v1/orders/{id}',
   'GET /partner/v1/pricelist',
