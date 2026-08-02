@@ -134,6 +134,9 @@ export interface FleetGridDto {
   rawTotalAmount: number;
   availableRentalPartners: string[];
   availablePlates: { plate: string; type: string }[];
+  // Options of the "Tipe Kendaraan" filter (?vehicleType=), unaffected by the
+  // current selection so the dropdown never shrinks as the reader picks.
+  availableVehicleTypes: string[];
 }
 
 export interface GlobalSummaryDto {
@@ -310,6 +313,7 @@ export function toFleetGrid(result: GojekGridResult): FleetGridDto {
     rawTotalAmount: result.rawTotalAmount,
     availableRentalPartners: result.availableRentalPartners,
     availablePlates: result.availablePlates,
+    availableVehicleTypes: result.availableVehicleTypes,
   };
 }
 

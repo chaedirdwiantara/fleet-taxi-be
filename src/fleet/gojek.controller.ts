@@ -16,6 +16,12 @@ import { ApiCookieAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import { CheckPolicies } from '../common/decorators/check-policies.decorator';
 import { PoliciesGuard } from '../common/guards/policies.guard';
 import { SessionGuard } from '../common/guards/session.guard';
+import {
+  GRID_SEARCH_DOC,
+  GRID_SEARCH_PARAM,
+  GRID_VEHICLE_TYPE_DOC,
+  GRID_VEHICLE_TYPE_PARAM,
+} from '../common/util/grid-filters';
 import { MONITORING_MODES, parseMonitoringMode } from '../common/util/monitoring-mode';
 import { DATE_RANGE_DOC, parseDateRange, parsePeriod, toStringArray } from '../common/util/period';
 import { AdminFleetService } from './admin-fleet.service';
@@ -42,17 +48,34 @@ export class GojekController {
   @ApiQuery({ name: 'rentalPartner', required: false, isArray: true, type: String })
   @ApiQuery({ name: 'plate', required: false, type: String })
   @ApiQuery({ name: 'mode', required: false, enum: MONITORING_MODES })
+  @ApiQuery({
+    name: GRID_SEARCH_PARAM,
+    required: false,
+    type: String,
+    description: GRID_SEARCH_DOC,
+  })
+  @ApiQuery({
+    name: GRID_VEHICLE_TYPE_PARAM,
+    required: false,
+    isArray: true,
+    type: String,
+    description: GRID_VEHICLE_TYPE_DOC,
+  })
   async grid(
     @Query('month') month: string,
     @Query('year') year: string,
     @Query('rentalPartner') rentalPartner?: string | string[],
     @Query('plate') plate?: string,
     @Query('mode') mode?: string,
+    @Query(GRID_SEARCH_PARAM) q?: string,
+    @Query(GRID_VEHICLE_TYPE_PARAM) vehicleType?: string | string[],
   ) {
     const period = parsePeriod(month, year);
     return this.adminFleet.gojekGrid(period.month, period.year, {
       rentalPartners: toStringArray(rentalPartner),
       plate,
+      q,
+      vehicleTypes: toStringArray(vehicleType),
       mode: parseMonitoringMode(mode),
     });
   }

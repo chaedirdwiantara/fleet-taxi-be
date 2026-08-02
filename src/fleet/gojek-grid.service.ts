@@ -86,6 +86,18 @@ export class GojekGridService {
       rentalPartners?: string[];
       plates?: string[];
       plate?: string;
+      // Free-text search over the two identities a reader knows a row by: its
+      // plate and its driver. One box for both, so the reader never has to say
+      // which of the two they typed.
+      q?: string;
+      // "Tipe Kendaraan" filter, matched against the plate's resolved Type (see
+      // vehicleTypeByNorm). A row is kept when ANY of its plates is of a
+      // selected type — in driver mode that reads as "drove such a vehicle".
+      vehicleTypes?: string[];
+      // Server-derived norm → Type map (Daftarkan Plat). Fills the Type of every
+      // plate no admin fleet_target typed, which is what makes the Type column,
+      // the availablePlates payload and the vehicleTypes filter agree.
+      vehicleTypeByNorm?: Map<string, string>;
       // Server-derived plate allowlist (partner scoping). `undefined` = no scope
       // (admin); an EMPTY array = a partner with no registered plates → empty grid.
       // Never populate this from client input.
@@ -291,6 +303,25 @@ export class GojekGridService {
     // ── targets, exceptions, all-time stats ─────────────────────────────
     const targets = await db.select().from(fleetTargets);
 
+    // norm → Type, resolved once for every plate in the system: the admin
+    // fleet_targets value wins, the Type the partner entered in Daftarkan Plat
+    // fills the rest. Single definition of "a plate's Type", read by the Type
+    // column, the availablePlates payload and the vehicleTypes filter alike —
+    // previously each caller backfilled the column on its own after presenting,
+    // which left driver-mode rows and the filter without any Type at all.
+    const plateTypeByNorm = new Map<string, string>();
+    for (const [norm, type] of filters.vehicleTypeByNorm ?? []) {
+      if (type) plateTypeByNorm.set(norm, type);
+    }
+    for (const t of targets) {
+      const norm = t.vehiclePlateNorm || normalizePlate(t.vehiclePlate);
+      if (norm && t.vehicleType) plateTypeByNorm.set(norm, t.vehicleType);
+    }
+    // A plate row falls back to its own resolved column (the legacy fleet_targets
+    // match is substring-based, so it can carry a Type this exact map has not).
+    const typeOfPlate = (plate: string, row: GojekVehicleRow): string =>
+      plateTypeByNorm.get(plate) ?? (byDriver ? '' : row.vehicleType);
+
     const exceptionsRows = await db
       .select()
       .from(fleetExceptions)
@@ -407,6 +438,9 @@ export class GojekGridService {
             }
           }
         }
+        // No admin fleet_target typed this plate → show what the partner
+        // registered for it, so the monitoring screens agree with Daftarkan Plat.
+        if (!v.vehicleType) v.vehicleType = plateTypeByNorm.get(plateClean) ?? '';
       }
 
       // Rental Partner syncs from the partner who registered the plate; the
@@ -505,6 +539,16 @@ export class GojekGridService {
       ...new Set(allRows.map((r) => r.rentalPartner).filter((p) => p !== '')),
       NO_RENTAL_PARTNER,
     ].sort();
+    // Options of the "Tipe Kendaraan" filter. Computed over every row like the
+    // rental-partner list above, so picking one type never drops the others
+    // from the dropdown.
+    const availableVehicleTypes = [
+      ...new Set(
+        allRows
+          .flatMap((r) => r.plateHistory.map((p) => typeOfPlate(p, r)))
+          .filter((t) => t !== ''),
+      ),
+    ].sort((a, b) => a.localeCompare(b));
 
     let rows = allRows;
     if (filters.rentalPartners?.length) {
@@ -522,7 +566,7 @@ export class GojekGridService {
     for (const r of rows) {
       for (const plate of r.plateHistory) {
         if (!availablePlatesMap.has(plate)) {
-          availablePlatesMap.set(plate, { plate, type: byDriver ? '' : r.vehicleType });
+          availablePlatesMap.set(plate, { plate, type: typeOfPlate(plate, r) });
         }
       }
     }
@@ -538,6 +582,30 @@ export class GojekGridService {
     const plateQuery = normalizePlate(filters.plate);
     if (plateQuery) {
       rows = rows.filter((r) => r.plateHistory.some((p) => p.includes(plateQuery)));
+    }
+
+    // One search box over both identities: the query is normalized twice (as a
+    // plate and as a name) and a row matches on either, so "b2449" and "chandra"
+    // both work without the reader declaring which they typed.
+    const searchPlate = normalizePlate(filters.q);
+    const searchName = normalizeDriverName(filters.q ?? '');
+    if (searchPlate || searchName) {
+      rows = rows.filter(
+        (r) =>
+          (searchPlate !== '' && r.plateHistory.some((p) => p.includes(searchPlate))) ||
+          (searchName !== '' &&
+            (normalizeDriverName(r.driverName).includes(searchName) ||
+              r.driverHistory.some((n) => normalizeDriverName(n).includes(searchName)))),
+      );
+    }
+
+    const wantedTypes = new Set(
+      (filters.vehicleTypes ?? []).map((t) => t.trim().toLowerCase()).filter((t) => t !== ''),
+    );
+    if (wantedTypes.size) {
+      rows = rows.filter((r) =>
+        r.plateHistory.some((p) => wantedTypes.has(typeOfPlate(p, r).trim().toLowerCase())),
+      );
     }
 
     // legacy strcmp order: rental_partner then driver_name (region_name
@@ -606,6 +674,7 @@ export class GojekGridService {
       lastImportDate: lifecycle.lastImportDate,
       availableRentalPartners,
       availablePlates,
+      availableVehicleTypes,
       ...(dayWindow !== undefined
         ? {
             dayWindow: {
@@ -649,6 +718,7 @@ export class GojekGridService {
       lastImportDate: null,
       availableRentalPartners: [NO_RENTAL_PARTNER],
       availablePlates: [],
+      availableVehicleTypes: [],
       ...(dayWindow !== undefined
         ? {
             dayWindow: {

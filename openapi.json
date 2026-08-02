@@ -706,6 +706,27 @@
             }
           },
           {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Free-text search over the row identity: matches a normalized plate substring OR a driver-name substring. In mode=driver a plate match reads as \"drove that plate\".",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "vehicleType",
+            "required": false,
+            "in": "query",
+            "description": "Vehicle Type (\"Tipe Kendaraan\"), repeatable. A row is kept when ANY of its plates is of a listed type. Compared case-insensitively against the same resolved Type the grid displays; the selectable values are availableVehicleTypes.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
             "name": "rentalPartner",
             "required": false,
             "in": "query",
@@ -1172,6 +1193,27 @@
                 "driver"
               ],
               "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Free-text search over the row identity: matches a normalized plate substring OR a driver-name substring. In mode=driver a plate match reads as \"drove that plate\".",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "vehicleType",
+            "required": false,
+            "in": "query",
+            "description": "Vehicle Type (\"Tipe Kendaraan\"), repeatable. A row is kept when ANY of its plates is of a listed type. Compared case-insensitively against the same resolved Type the grid displays; the selectable values are availableVehicleTypes.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           {
@@ -1800,6 +1842,27 @@
               ],
               "type": "string"
             }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Free-text search over the row identity: matches a normalized plate substring OR a driver-name substring. In mode=driver a plate match reads as \"drove that plate\".",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "vehicleType",
+            "required": false,
+            "in": "query",
+            "description": "Vehicle Type (\"Tipe Kendaraan\"), repeatable. A row is kept when ANY of its plates is of a listed type. Compared case-insensitively against the same resolved Type the grid displays; the selectable values are availableVehicleTypes.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         ],
         "responses": {
@@ -2073,6 +2136,27 @@
                 "driver"
               ],
               "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Free-text search over the row identity: matches a normalized plate substring OR a driver-name substring. In mode=driver a plate match reads as \"drove that plate\".",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "vehicleType",
+            "required": false,
+            "in": "query",
+            "description": "Vehicle Type (\"Tipe Kendaraan\"), repeatable. A row is kept when ANY of its plates is of a listed type. Compared case-insensitively against the same resolved Type the grid displays; the selectable values are availableVehicleTypes.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           }
         ],
