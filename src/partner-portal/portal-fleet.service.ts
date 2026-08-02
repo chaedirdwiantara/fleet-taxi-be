@@ -45,22 +45,22 @@ export class PortalFleetService {
     month: number,
     year: number,
     mode: MonitoringMode = 'plate',
+    filters: { q?: string; vehicleTypes?: string[] } = {},
   ): Promise<FleetGridDto> {
     const [scopePlates, typeMap] = await Promise.all([
       this.plates.registeredNorms(partnerId),
       this.plates.typeByNorm(partnerId),
     ]);
-    const result = await this.gojek.buildGrid(month, year, { scopePlates, mode });
-    const dto = toFleetGrid(result);
-    // Surface the Type the partner entered in Daftarkan Plat when the grid has
-    // none (no admin fleet target set it) — matches the registration screen.
-    for (const row of dto.rows) {
-      if (!row.vehicleType) {
-        const type = typeMap.get(row.plateNorm);
-        if (type) row.vehicleType = type;
-      }
-    }
-    return dto;
+    const result = await this.gojek.buildGrid(month, year, {
+      ...filters,
+      scopePlates,
+      mode,
+      // The Type the partner entered in Daftarkan Plat fills the plates no admin
+      // fleet target typed, inside the grid — so the Type column, the plate
+      // options and the ?vehicleType= filter all read the same value.
+      vehicleTypeByNorm: typeMap,
+    });
+    return toFleetGrid(result);
   }
 
   async gojekCell(
@@ -131,20 +131,19 @@ export class PortalFleetService {
     month: number,
     year: number,
     mode: MonitoringMode = 'plate',
+    filters: { q?: string; vehicleTypes?: string[] } = {},
   ): Promise<GrabGridDto> {
     const [scopePlates, typeMap] = await Promise.all([
       this.plates.registeredNorms(partnerId),
       this.plates.typeByNorm(partnerId),
     ]);
-    const result = await this.grab.buildGrid(month, year, { scopePlates, mode });
-    const dto = toGrabGrid(result);
-    for (const row of dto.rows) {
-      if (!row.vehicleType || row.vehicleType === '-') {
-        const type = typeMap.get(row.plateNumber);
-        if (type) row.vehicleType = type;
-      }
-    }
-    return dto;
+    const result = await this.grab.buildGrid(month, year, {
+      ...filters,
+      scopePlates,
+      mode,
+      vehicleTypeByNorm: typeMap,
+    });
+    return toGrabGrid(result);
   }
 
   /**

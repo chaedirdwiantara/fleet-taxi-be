@@ -10,7 +10,7 @@
  */
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { eq, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
@@ -42,6 +42,8 @@ describe('Total Due = Σ imported dues', () => {
   let app: INestApplication;
   let database: DatabaseService;
   let gojek: GojekGridService;
+  // Only the imports THIS suite created — see the afterAll note.
+  const ownImportIds: number[] = [];
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -67,6 +69,7 @@ describe('Total Due = Σ imported dues', () => {
         status: 'done',
       })
       .returning();
+    ownImportIds.push(imp!.id, prevImp!.id);
 
     const day = dayISO;
     const base = { importId: imp!.id, periodYear: YEAR, periodMonth: MONTH };
@@ -142,7 +145,11 @@ describe('Total Due = Σ imported dues', () => {
     await db
       .delete(fleetImportDetails)
       .where(inArray(fleetImportDetails.vehiclePlateNorm, ALL_PLATES));
-    await db.delete(fleetImports).where(eq(fleetImports.periodYear, YEAR));
+    // Delete OUR imports by id, never the whole year: fleet_import_details
+    // cascades on import_id, and deposit-installments.e2e owns another 2035
+    // period — a year-wide delete wipes its rows mid-run and it then reads an
+    // empty ledger. e2e files run in parallel workers over one database.
+    await db.delete(fleetImports).where(inArray(fleetImports.id, ownImportIds));
     await db.delete(fleetExceptions).where(inArray(fleetExceptions.vehiclePlate, ALL_PLATES));
     await app.close();
   });

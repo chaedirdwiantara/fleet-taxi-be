@@ -147,6 +147,9 @@ export interface GojekGridResult {
   lastImportDate: string | null; // newest transaction date in the data anywhere
   availableRentalPartners: string[];
   availablePlates: Array<{ plate: string; type: string }>;
+  // Options of the "Tipe Kendaraan" filter — every Type present in the period,
+  // computed before the row filters so a selection never shrinks the list.
+  availableVehicleTypes: string[];
   // Present only when buildGrid ran with a valid Tanggal day window — the
   // month's slice of a (possibly cross-month) date-range filter. Each total
   // mirrors a whole-month total above, narrowed to the window, so the two can

@@ -31,27 +31,28 @@ export class AdminFleetService {
   async gojekGrid(
     month: number,
     year: number,
-    filters: { rentalPartners?: string[]; plate?: string; mode?: MonitoringMode } = {},
+    filters: {
+      rentalPartners?: string[];
+      plate?: string;
+      q?: string;
+      vehicleTypes?: string[];
+      mode?: MonitoringMode;
+    } = {},
   ): Promise<FleetGridDto> {
     const { norms, typeByNorm, partnerNameByNorm } = await this.registeredPlates.unionScope();
     const result = await this.gojek.buildGrid(month, year, {
       ...filters,
       scopePlates: norms,
       partnerNameByNorm,
+      // Types entered in Daftarkan Plat fill the plates no admin fleet target
+      // typed — the grid resolves them itself so the Type column, the plate
+      // options and the ?vehicleType= filter can never disagree.
+      vehicleTypeByNorm: typeByNorm,
       // the "Data Mentah Tanpa Plat" processing queue is an admin concern —
       // unplated rows can never belong to a partner's scope
       includeRawManual: true,
     });
-    const dto = toFleetGrid(result);
-    // Surface the Type entered in Daftarkan Plat when the grid has none (no
-    // admin fleet target set it) — same sync the partner portal does.
-    for (const row of dto.rows) {
-      if (!row.vehicleType) {
-        const type = typeByNorm.get(row.plateNorm);
-        if (type) row.vehicleType = type;
-      }
-    }
-    return dto;
+    return toFleetGrid(result);
   }
 
   async gojekCell(

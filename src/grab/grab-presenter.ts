@@ -18,8 +18,8 @@ export interface GrabRowDto {
   vehicleType: string;
   driverPhone: string;
   // Plates behind this row: its own in plate mode, all plates the person drove
-  // (with the city each was driven in) in driver mode.
-  plateHistory: { plate: string; city: string }[];
+  // (with the city and Car Model of each) in driver mode.
+  plateHistory: { plate: string; city: string; type: string }[];
   days: Record<number, { earning: number }>;
   summary: {
     earning: number;
@@ -45,6 +45,9 @@ export interface GrabGridDto {
   totals: { earning: number; driverFare: number; incentive: number };
   availableRentalPartners: string[];
   availableCities: string[];
+  // Options of the "Tipe Kendaraan" filter (?vehicleType=), computed before the
+  // row filters so the dropdown never shrinks as the reader picks.
+  availableVehicleTypes: string[];
 }
 
 export interface GrabDriverDetailDto {
@@ -108,6 +111,7 @@ export function toGrabGrid(result: GrabGridResult): GrabGridDto {
     // computed pre-filter by the service so filtering doesn't collapse the options
     availableRentalPartners: result.availableRentalPartners,
     availableCities: result.availableCities,
+    availableVehicleTypes: result.availableVehicleTypes,
   };
 }
 

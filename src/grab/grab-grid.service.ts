@@ -13,6 +13,10 @@ import { fetchRegisteredPartnerNames } from '../fleet/registered-partner-names';
 export interface GrabPlateUse {
   plate: string;
   city: string;
+  // Resolved Car Model / Type of THIS plate (grab_target › import › Daftarkan
+  // Plat). Per-plate rather than per-row, so a driver row can label each vehicle
+  // it drove instead of only the most recent one.
+  type: string;
 }
 
 export interface GrabVehicleRow {
@@ -70,6 +74,7 @@ export interface GrabGridResult {
   // so selecting one partner/city doesn't drop the others (legacy behavior).
   availableRentalPartners: string[];
   availableCities: string[];
+  availableVehicleTypes: string[];
 }
 
 /** Faithful port of legacy AdminFleetMonitoringGrabController::getIndex. */
@@ -101,6 +106,15 @@ export class GrabGridService {
       rentalPartners?: string[];
       plates?: string[];
       plate?: string;
+      // Free-text search over plate AND driver name — one box for both, exactly
+      // like the Gojek grid.
+      q?: string;
+      // "Tipe Kendaraan" filter: a row is kept when ANY of its plates is of a
+      // selected type (in driver mode: "drove such a vehicle").
+      vehicleTypes?: string[];
+      // Server-derived norm → Type map (Daftarkan Plat). Fills the Type of plates
+      // the import and grab_targets left blank; see gojek-grid.service.
+      vehicleTypeByNorm?: Map<string, string>;
       // Server-derived plate allowlist (partner scoping); see gojek-grid.service.
       scopePlates?: string[];
       // Row subject: one row per plate+city+driver (default) or per driver.
@@ -131,6 +145,7 @@ export class GrabGridService {
         totalDriverFare: 0,
         availableRentalPartners: [],
         availableCities: [],
+        availableVehicleTypes: [],
       };
     }
 
@@ -152,6 +167,9 @@ export class GrabGridService {
     // MOST RECENTLY rather than whichever row the scan happened to hit last.
     // Internal working field — stripped before the result is returned.
     const pivot = new Map<string, GrabVehicleRow & { metaDate: string }>();
+    // Car Model per plate, kept aside because plateHistory is built one row at a
+    // time and the first row of a plate may carry no model while a later one does.
+    const carModelByPlate = new Map<string, string>();
 
     for (const row of rawRows) {
       const day = Number(row.date.slice(8, 10));
@@ -199,8 +217,10 @@ export class GrabGridService {
         pivot.set(key, v);
       }
 
+      if (plate && row.carModel) carModelByPlate.set(plate, row.carModel);
       if (plate && !v.plateHistory.some((p) => p.plate === plate && p.city === city)) {
-        v.plateHistory.push({ plate, city });
+        // `type` is resolved once for all of them below, after grab_targets load.
+        v.plateHistory.push({ plate, city, type: '' });
       }
       // A driver row spans vehicles, so its metadata columns show the one driven
       // most recently — the same "latest wins" idea the plate view applies to the
@@ -247,8 +267,24 @@ export class GrabGridService {
         ),
       ]),
     ]);
+    // norm → Type for every plate the pivot touched, in the same precedence the
+    // Car Model column already used: the admin grab_target wins, then the model
+    // the import carried, then the Type registered in Daftarkan Plat. One
+    // definition read by the Type column, plateHistory and the vehicleTypes
+    // filter, so a row can never be filtered by a Type it does not display.
+    const plateTypeByNorm = new Map<string, string>();
+    for (const [norm, type] of filters.vehicleTypeByNorm ?? []) {
+      if (type) plateTypeByNorm.set(norm, type);
+    }
+    for (const [plate, model] of carModelByPlate) plateTypeByNorm.set(plate, model);
+    for (const t of targets) {
+      const norm = normalizePlate(t.plateNumber);
+      if (norm && t.vehicleType) plateTypeByNorm.set(norm, t.vehicleType);
+    }
+
     for (const v of pivot.values()) {
       const plateClean = v.plateNumber;
+      for (const use of v.plateHistory) use.type = plateTypeByNorm.get(use.plate) ?? '';
       for (const t of targets) {
         const tClean = normalizePlate(t.plateNumber);
         if (tClean !== '' && plateClean !== '' && tClean === plateClean) {
@@ -272,6 +308,11 @@ export class GrabGridService {
         const registeredName = registeredPartnerNames.get(plateClean);
         if (registeredName) v.rentalPartner = registeredName;
       }
+      // The import carried no Car Model and no target typed it → show what the
+      // partner registered, so the Type column matches Daftarkan Plat.
+      if (!v.vehicleType || v.vehicleType === '-') {
+        v.vehicleType = plateTypeByNorm.get(plateClean) || v.vehicleType;
+      }
     }
 
     // legacy strcmp order: rental_partner -> city -> plate_number. Driver rows
@@ -291,6 +332,9 @@ export class GrabGridService {
     const availableCities = [
       ...new Set(rows.flatMap((r) => r.plateHistory.map((p) => p.city)).filter((c) => c !== '')),
     ].sort();
+    const availableVehicleTypes = [
+      ...new Set(rows.flatMap((r) => r.plateHistory.map((p) => p.type)).filter((t) => t !== '')),
+    ].sort((a, b) => a.localeCompare(b));
 
     if (filters.rentalPartners?.length) {
       rows = rows.filter((r) => filters.rentalPartners!.includes(r.rentalPartner));
@@ -303,6 +347,26 @@ export class GrabGridService {
     const plateQuery = normalizePlate(filters.plate);
     if (plateQuery) {
       rows = rows.filter((r) => r.plateHistory.some((p) => p.plate.includes(plateQuery)));
+    }
+
+    // One search box over both identities — see gojek-grid.service.
+    const searchPlate = normalizePlate(filters.q);
+    const searchName = normalizeDriverName(filters.q ?? '');
+    if (searchPlate || searchName) {
+      rows = rows.filter(
+        (r) =>
+          (searchPlate !== '' && r.plateHistory.some((p) => p.plate.includes(searchPlate))) ||
+          (searchName !== '' && normalizeDriverName(r.driverName).includes(searchName)),
+      );
+    }
+
+    const wantedTypes = new Set(
+      (filters.vehicleTypes ?? []).map((t) => t.trim().toLowerCase()).filter((t) => t !== ''),
+    );
+    if (wantedTypes.size) {
+      rows = rows.filter((r) =>
+        r.plateHistory.some((p) => wantedTypes.has(p.type.trim().toLowerCase())),
+      );
     }
 
     return {
@@ -321,6 +385,7 @@ export class GrabGridService {
       totalDriverFare: rows.reduce((s, r) => s + r.totalDriverFare, 0),
       availableRentalPartners,
       availableCities,
+      availableVehicleTypes,
     };
   }
 

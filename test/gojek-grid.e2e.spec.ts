@@ -247,6 +247,7 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
         plateNumber: 'B 5678 ZZ',
         plateNumberNorm: 'B5678ZZ',
         city: 'Jakarta',
+        carModel: 'Wuling Cloud',
         driverName: 'SITI',
         totalEarningCollected: 100000,
         totalIncentive: 10000,
@@ -261,6 +262,7 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
         plateNumber: 'B 5678 ZZ',
         plateNumberNorm: 'B5678ZZ',
         city: 'Jakarta',
+        carModel: 'Wuling Cloud',
         driverName: 'SITI',
         totalEarningCollected: 200000,
         totalIncentive: 20000,
@@ -385,6 +387,104 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     expect(keys).not.toContain('G7772KB');
   });
 
+  // Both table filters run BEFORE the totals are accumulated, which is the whole
+  // reason they live on the server: the TOTAL row and the Summary block must
+  // describe the rows on screen, and the client is not allowed to sum rupiah.
+  const bothPlates = ['G7771KA', 'G7772KB'];
+  const registeredTypes = () => new Map([['G7771KA', 'Premium - Innova']]);
+
+  it('narrows the grid by q (plate OR driver) and recomputes every total', async () => {
+    const all = await gojek.buildGrid(MONTH, YEAR, { scopePlates: bothPlates });
+    expect(all.rows).toHaveLength(2);
+
+    const byName = await gojek.buildGrid(MONTH, YEAR, { scopePlates: bothPlates, q: 'budi' });
+    expect(byName.rows.map((r) => r.key)).toEqual(['G7771KA']);
+
+    // the same box takes a plate — punctuation and case are normalized away
+    const byPlate = await gojek.buildGrid(MONTH, YEAR, { scopePlates: bothPlates, q: 'g 7772 k' });
+    expect(byPlate.rows.map((r) => r.key)).toEqual(['G7772KB']);
+
+    // totals follow the surviving rows, not the whole fleet
+    expect(byName.totalDeduction).toBe(980_000);
+    expect(byName.dailyTotals[3]).toBe(400_000);
+    expect(byName.dailyTotals[10]).toBe(0); // G7772KB's only day, now filtered out
+    expect(all.dailyTotals[10]).toBe(300_000);
+
+    const nothing = await gojek.buildGrid(MONTH, YEAR, { scopePlates: bothPlates, q: 'zzzz' });
+    expect(nothing.rows).toHaveLength(0);
+    expect(nothing.totalDeduction).toBe(0);
+  });
+
+  it('narrows the grid by vehicleType against the Type it displays', async () => {
+    const opts = { scopePlates: bothPlates, vehicleTypeByNorm: registeredTypes() };
+
+    const unfiltered = await gojek.buildGrid(MONTH, YEAR, opts);
+    // G7771KA has no fleet_target, so its Type is the one registered in
+    // Daftarkan Plat — resolved inside the grid, not patched on afterwards
+    expect(unfiltered.rows.find((r) => r.key === 'G7771KA')!.vehicleType).toBe('Premium - Innova');
+    expect(unfiltered.availableVehicleTypes).toEqual(['Premium - Innova']);
+    expect(unfiltered.availablePlates).toContainEqual({
+      plate: 'G7771KA',
+      type: 'Premium - Innova',
+    });
+
+    const filtered = await gojek.buildGrid(MONTH, YEAR, {
+      ...opts,
+      vehicleTypes: ['premium - innova'], // case-insensitive
+    });
+    expect(filtered.rows.map((r) => r.key)).toEqual(['G7771KA']);
+    // the dropdown must not shrink as the reader picks
+    expect(filtered.availableVehicleTypes).toEqual(['Premium - Innova']);
+
+    const none = await gojek.buildGrid(MONTH, YEAR, { ...opts, vehicleTypes: ['BYD M6'] });
+    expect(none.rows).toHaveLength(0);
+    expect(none.totalDeduction).toBe(0);
+  });
+
+  it('resolves a per-plate Type in driver mode too (the "PLAT - Type" label)', async () => {
+    const opts = {
+      scopePlates: bothPlates,
+      vehicleTypeByNorm: registeredTypes(),
+      mode: 'driver' as const,
+    };
+    const grid = await gojek.buildGrid(MONTH, YEAR, opts);
+    // a driver row has no single vehicleType, so the Type travels per plate
+    expect(grid.availablePlates).toContainEqual({ plate: 'G7771KA', type: 'Premium - Innova' });
+    expect(grid.rows.find((r) => r.driverName === 'BUDI')!.plateHistory).toEqual(['G7771KA']);
+
+    // and the filter reads as "drove a vehicle of that type"
+    const filtered = await gojek.buildGrid(MONTH, YEAR, {
+      ...opts,
+      vehicleTypes: ['Premium - Innova'],
+    });
+    expect(filtered.rows.map((r) => r.driverName)).toEqual(['BUDI']);
+  });
+
+  it('applies q and vehicleType on the Grab grid, incl. the per-plate Car Model', async () => {
+    const all = await grab.buildGrid(GRAB_MONTH, YEAR, { scopePlates: ['B5678ZZ'] });
+    expect(all.availableVehicleTypes).toEqual(['Wuling Cloud']);
+    expect(all.rows[0]!.plateHistory).toEqual([
+      { plate: 'B5678ZZ', city: 'Jakarta', type: 'Wuling Cloud' },
+    ]);
+
+    const byName = await grab.buildGrid(GRAB_MONTH, YEAR, { scopePlates: ['B5678ZZ'], q: 'siti' });
+    expect(byName.rows).toHaveLength(1);
+    expect(byName.totalEarnings).toBe(300_000);
+
+    const typed = await grab.buildGrid(GRAB_MONTH, YEAR, {
+      scopePlates: ['B5678ZZ'],
+      vehicleTypes: ['wuling cloud'],
+    });
+    expect(typed.rows).toHaveLength(1);
+
+    const none = await grab.buildGrid(GRAB_MONTH, YEAR, {
+      scopePlates: ['B5678ZZ'],
+      vehicleTypes: ['BYD M6'],
+    });
+    expect(none.rows).toHaveLength(0);
+    expect(none.totalEarnings).toBe(0);
+  });
+
   it('scopePlates restricts the grid to an allowlist (partner scoping primitive)', async () => {
     const scoped = await gojek.buildGrid(MONTH, YEAR, { scopePlates: ['G7772KB'] });
     const keys = scoped.rows.map((r) => r.key);
@@ -499,6 +599,24 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     // the Type entered in Daftarkan Plat surfaces when no fleet target set one
     const rowA = res.body.data.rows.find((r: { plateNorm: string }) => r.plateNorm === 'G7771KA');
     expect(rowA.vehicleType).toBe('Premium - Innova');
+  });
+
+  it('applies the q and vehicleType table filters on the admin grid (HTTP)', async () => {
+    const norms = (res: { body: { data: { rows: { plateNorm: string }[] } } }) =>
+      res.body.data.rows.map((r) => r.plateNorm);
+    const url = `/admin/fleet/gojek/grid?month=${MONTH}&year=${YEAR}`;
+
+    const searched = await agent.get(`${url}&q=budi`).expect(200);
+    expect(norms(searched)).toContain('G7771KA');
+    expect(norms(searched)).not.toContain('G7772KB');
+
+    const typed = await agent
+      .get(`${url}&vehicleType=${encodeURIComponent('Premium - Innova')}`)
+      .expect(200);
+    expect(norms(typed)).toContain('G7771KA');
+    expect(norms(typed)).not.toContain('G7772KB');
+    // options are computed before the filters, so the dropdown stays complete
+    expect(typed.body.data.availableVehicleTypes).toContain('Premium - Innova');
   });
 
   it('admin summary counts only the plates visible in the scoped table (HTTP)', async () => {

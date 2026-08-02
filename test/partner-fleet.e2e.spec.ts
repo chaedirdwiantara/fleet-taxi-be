@@ -306,6 +306,49 @@ describe('partner portal fleet monitoring (Daftarkan Plat + scoped grids)', () =
     expect(oneDay.body.data.range.totalDeduction).toBe(daily.find((d) => d.day === 5)!.total);
   });
 
+  it('filters its own grid by q and vehicleType — and a filter can never widen the scope', async () => {
+    const a = await login();
+    const gojekUrl = `/partner/portal/fleet/gojek/grid?month=${MONTH}&year=${YEAR}`;
+    const norms = (res: { body: { data: { rows: { plateNorm: string }[] } } }) =>
+      res.body.data.rows.map((r) => r.plateNorm);
+
+    const unfiltered = await a.get(gojekUrl).expect(200);
+    expect(unfiltered.body.data.availableVehicleTypes).toEqual(['Premium - BYD M6']);
+
+    // by driver, then by plate — one box for both
+    expect(norms(await a.get(`${gojekUrl}&q=mine`).expect(200))).toEqual([MINE_NORM]);
+    expect(norms(await a.get(`${gojekUrl}&q=1111`).expect(200))).toEqual([MINE_NORM]);
+
+    // searching for a plate this partner never registered stays empty — the
+    // filter narrows the server-derived scope, it can never reach outside it
+    expect(norms(await a.get(`${gojekUrl}&q=${OTHER_NORM}`).expect(200))).toEqual([]);
+    expect(norms(await a.get(`${gojekUrl}&q=other`).expect(200))).toEqual([]);
+
+    const typed = await a
+      .get(`${gojekUrl}&vehicleType=${encodeURIComponent('Premium - BYD M6')}`)
+      .expect(200);
+    expect(norms(typed)).toEqual([MINE_NORM]);
+    // totals follow the filter; an unmatched type empties the table
+    const noType = await a.get(`${gojekUrl}&vehicleType=BYD%20M6`).expect(200);
+    expect(noType.body.data.rows).toEqual([]);
+    expect(noType.body.data.tableTotals.totalDeduction).toBe(0);
+
+    // same two params on Grab
+    const grabUrl = `/partner/portal/fleet/grab/grid?month=${MONTH}&year=${YEAR}`;
+    const grabMine = await a.get(`${grabUrl}&q=mine`).expect(200);
+    expect(grabMine.body.data.rows.map((r: { plateNumber: string }) => r.plateNumber)).toEqual([
+      MINE_NORM,
+    ]);
+    expect((await a.get(`${grabUrl}&q=other`).expect(200)).body.data.rows).toEqual([]);
+    // the Grab import carries no Car Model here, so the registered Type is what
+    // the row shows and what the filter matches
+    expect(grabMine.body.data.availableVehicleTypes).toEqual(['Premium - BYD M6']);
+    const grabTyped = await a
+      .get(`${grabUrl}&vehicleType=${encodeURIComponent('premium - byd m6')}`)
+      .expect(200);
+    expect(grabTyped.body.data.rows).toHaveLength(1);
+  });
+
   it('edits a registered plate Type (PUT) and the grid overlay follows', async () => {
     const a = await login();
     const id = (await a.get('/partner/portal/plates').expect(200)).body.data[0].id;

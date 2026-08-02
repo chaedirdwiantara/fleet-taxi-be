@@ -15,8 +15,14 @@ import { ApiCookieAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import { SessionUser } from '../auth/session.types';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SessionGuard } from '../common/guards/session.guard';
+import {
+  GRID_SEARCH_DOC,
+  GRID_SEARCH_PARAM,
+  GRID_VEHICLE_TYPE_DOC,
+  GRID_VEHICLE_TYPE_PARAM,
+} from '../common/util/grid-filters';
 import { MONITORING_MODES, parseMonitoringMode } from '../common/util/monitoring-mode';
-import { DATE_RANGE_DOC, parseDateRange, parsePeriod } from '../common/util/period';
+import { DATE_RANGE_DOC, parseDateRange, parsePeriod, toStringArray } from '../common/util/period';
 import { CreateExceptionDto } from '../fleet/dto/fleet.dto';
 import { PortalAllFleetService } from './portal-all-fleet.service';
 import { PortalFleetService } from './portal-fleet.service';
@@ -109,15 +115,33 @@ export class PortalFleetController {
   @ApiQuery({ name: 'month', type: Number, example: 7 })
   @ApiQuery({ name: 'year', type: Number, example: 2026 })
   @ApiQuery({ name: 'mode', required: false, enum: MONITORING_MODES })
+  @ApiQuery({
+    name: GRID_SEARCH_PARAM,
+    required: false,
+    type: String,
+    description: GRID_SEARCH_DOC,
+  })
+  @ApiQuery({
+    name: GRID_VEHICLE_TYPE_PARAM,
+    required: false,
+    isArray: true,
+    type: String,
+    description: GRID_VEHICLE_TYPE_DOC,
+  })
   gojekGrid(
     @CurrentUser() user: SessionUser,
     @Query('month') month: string,
     @Query('year') year: string,
     @Query('mode') mode?: string,
+    @Query(GRID_SEARCH_PARAM) q?: string,
+    @Query(GRID_VEHICLE_TYPE_PARAM) vehicleType?: string | string[],
   ) {
     const partnerId = requirePartner(user);
     const period = parsePeriod(month, year);
-    return this.fleet.gojekGrid(partnerId, period.month, period.year, parseMonitoringMode(mode));
+    return this.fleet.gojekGrid(partnerId, period.month, period.year, parseMonitoringMode(mode), {
+      q,
+      vehicleTypes: toStringArray(vehicleType),
+    });
   }
 
   @Get('gojek/cell')
@@ -215,15 +239,33 @@ export class PortalFleetController {
   @ApiQuery({ name: 'month', type: Number, example: 7 })
   @ApiQuery({ name: 'year', type: Number, example: 2026 })
   @ApiQuery({ name: 'mode', required: false, enum: MONITORING_MODES })
+  @ApiQuery({
+    name: GRID_SEARCH_PARAM,
+    required: false,
+    type: String,
+    description: GRID_SEARCH_DOC,
+  })
+  @ApiQuery({
+    name: GRID_VEHICLE_TYPE_PARAM,
+    required: false,
+    isArray: true,
+    type: String,
+    description: GRID_VEHICLE_TYPE_DOC,
+  })
   grabGrid(
     @CurrentUser() user: SessionUser,
     @Query('month') month: string,
     @Query('year') year: string,
     @Query('mode') mode?: string,
+    @Query(GRID_SEARCH_PARAM) q?: string,
+    @Query(GRID_VEHICLE_TYPE_PARAM) vehicleType?: string | string[],
   ) {
     const partnerId = requirePartner(user);
     const period = parsePeriod(month, year);
-    return this.fleet.grabGrid(partnerId, period.month, period.year, parseMonitoringMode(mode));
+    return this.fleet.grabGrid(partnerId, period.month, period.year, parseMonitoringMode(mode), {
+      q,
+      vehicleTypes: toStringArray(vehicleType),
+    });
   }
 
   @Get('grab/summary')
