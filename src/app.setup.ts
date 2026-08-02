@@ -41,6 +41,12 @@ export function configureApp(app: INestApplication): void {
     '/partner/portal/drivers/documents',
     express.raw({ type: ['image/*', 'application/pdf'], limit: '11mb' }),
   );
+  // Rental payment-evidence upload sink — same dev-path presigned flow; proofs
+  // may be images or PDFs.
+  app.use(
+    '/partner/portal/rentals/proofs',
+    express.raw({ type: ['image/*', 'application/pdf'], limit: '11mb' }),
+  );
   app.use(
     buildSessionMiddleware(
       {

@@ -4,25 +4,30 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseIntPipe,
   Patch,
   Post,
   Put,
   Query,
+  Req,
   StreamableFile,
   UseGuards,
 } from '@nestjs/common';
-import { ApiCookieAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiConsumes, ApiCookieAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { SessionUser } from '../auth/session.types';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SessionGuard } from '../common/guards/session.guard';
 import { requirePartner } from '../partner-portal/portal.util';
 import { CreateRentalDto } from './dto/create-rental.dto';
+import { PresignRentalProofDto } from './dto/presign-rental-proof.dto';
 import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto';
 import { UpsertCogsDefaultDto } from './dto/upsert-cogs-default.dto';
 import { ListRentalsFilters, PartnerRentalsService } from './partner-rentals.service';
 import { RentalCogsDefaultsService } from './rental-cogs-defaults.service';
+import { RentalPaymentProofsService } from './rental-payment-proofs.service';
 import { RentalsExportService } from './rentals-export.service';
 
 const LIST_QUERIES = [
@@ -67,6 +72,7 @@ export class PartnerRentalsController {
     private readonly rentalsService: PartnerRentalsService,
     private readonly cogsDefaults: RentalCogsDefaultsService,
     private readonly exportService: RentalsExportService,
+    private readonly proofs: RentalPaymentProofsService,
   ) {}
 
   @Get('cogs-defaults')
@@ -124,6 +130,63 @@ export class PartnerRentalsController {
     });
   }
 
+  // ---- payment evidence ------------------------------------------------------
+  // Presign → PUT → confirm, like driver documents. These live under the
+  // STATIC 'proofs' segment and must stay above the :id routes below, or
+  // Express hands 'proofs' to ParseIntPipe and every call 400s.
+
+  @Post('proofs/presign')
+  @ApiOperation({
+    summary: 'Create a pending payment-proof row and get an upload URL (S3 presigned PUT in prod)',
+  })
+  presignProof(@CurrentUser() user: SessionUser, @Body() dto: PresignRentalProofDto) {
+    return this.proofs.presign(user, requirePartner(user), dto);
+  }
+
+  @Post('proofs/:proofId/confirm')
+  @ApiOperation({ summary: 'Confirm a payment-proof upload finished (marks it uploaded)' })
+  confirmProof(@CurrentUser() user: SessionUser, @Param('proofId', ParseIntPipe) proofId: number) {
+    return this.proofs.confirm(requirePartner(user), proofId);
+  }
+
+  @Delete('proofs/:proofId')
+  @ApiOperation({
+    summary: 'Delete one payment proof (refused if it is the last one of a paid rental)',
+  })
+  removeProof(@CurrentUser() user: SessionUser, @Param('proofId', ParseIntPipe) proofId: number) {
+    return this.proofs.remove(requirePartner(user), proofId);
+  }
+
+  @Put('proofs/:proofId/upload')
+  @ApiOperation({ summary: 'Upload sink for presigned payment proofs (dev; prod presigns S3)' })
+  @ApiConsumes('image/jpeg', 'image/png', 'application/pdf')
+  uploadProof(
+    @CurrentUser() user: SessionUser,
+    @Param('proofId', ParseIntPipe) proofId: number,
+    @Req() req: Request,
+  ) {
+    // Raw body via the route-scoped express.raw() in app.setup.ts
+    return this.proofs.storeUploaded(
+      requirePartner(user),
+      proofId,
+      req.headers['content-type'],
+      req.body as Buffer,
+    );
+  }
+
+  @Get('proofs/:proofId/file')
+  @Header('Cache-Control', 'private, max-age=300')
+  @ApiOperation({
+    summary: 'Stream one payment proof (dev; prod responses carry presigned S3 GET URLs)',
+  })
+  async proofFile(
+    @CurrentUser() user: SessionUser,
+    @Param('proofId', ParseIntPipe) proofId: number,
+  ): Promise<StreamableFile> {
+    const { contentType, body } = await this.proofs.file(requirePartner(user), proofId);
+    return new StreamableFile(body, { type: contentType });
+  }
+
   @Get()
   @ApiOperation({ summary: 'Monthly rental recap: summary, nett per type, regions, items' })
   @ApiQuery(LIST_QUERIES[0]!)
@@ -176,7 +239,12 @@ export class PartnerRentalsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePaymentStatusDto,
   ) {
-    return this.rentalsService.updatePaymentStatus(requirePartner(user), id, dto.paymentStatus);
+    return this.rentalsService.updatePaymentStatus(
+      requirePartner(user),
+      id,
+      dto.paymentStatus,
+      dto.paymentProofIds,
+    );
   }
 
   private parseFilters(

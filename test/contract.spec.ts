@@ -22,6 +22,7 @@ const EXPECTED_OPERATIONS = [
   'DELETE /partner/portal/drivers/documents/{driverId}/{documentId}',
   'DELETE /partner/portal/fleet/gojek/exceptions/{id}',
   'DELETE /partner/portal/plates/{id}',
+  'DELETE /partner/portal/rentals/proofs/{proofId}',
   'DELETE /partner/portal/rentals/{id}',
   'GET /admin/activity-logs',
   'GET /admin/auth/me',
@@ -68,6 +69,7 @@ const EXPECTED_OPERATIONS = [
   'GET /partner/portal/rentals',
   'GET /partner/portal/rentals/cogs-defaults',
   'GET /partner/portal/rentals/export',
+  'GET /partner/portal/rentals/proofs/{proofId}/file',
   'GET /partner/v1/orders',
   'GET /partner/v1/orders/{id}',
   'GET /partner/v1/pricelist',
@@ -98,6 +100,8 @@ const EXPECTED_OPERATIONS = [
   'POST /partner/portal/logout',
   'POST /partner/portal/plates',
   'POST /partner/portal/rentals',
+  'POST /partner/portal/rentals/proofs/presign',
+  'POST /partner/portal/rentals/proofs/{proofId}/confirm',
   'POST /partner/v1/orders',
   'PUT /admin/fleet/{platform}/targets/{plate}',
   'PUT /partner/portal/checkpoints/media/{mediaId}/upload',
@@ -105,6 +109,7 @@ const EXPECTED_OPERATIONS = [
   'PUT /partner/portal/drivers/documents/{documentId}/upload',
   'PUT /partner/portal/plates/{id}',
   'PUT /partner/portal/rentals/cogs-defaults',
+  'PUT /partner/portal/rentals/proofs/{proofId}/upload',
   'PUT /partner/portal/rentals/{id}',
 ];
 
