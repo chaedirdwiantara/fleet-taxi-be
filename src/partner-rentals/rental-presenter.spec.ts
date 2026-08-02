@@ -6,8 +6,10 @@ import {
   matchesSearch,
   monthBounds,
   nettByType,
+  presentProof,
   presentRental,
   rentalDailyIncome,
+  RentalProofRow,
   slugifyCogsKey,
   sortRentalItems,
   summarizeRentals,
@@ -115,6 +117,73 @@ describe('presentRental — month clipping & money formulas', () => {
     expect(item.displayStartDate).toBe('2026-06-20');
     expect(item.displayEndDate).toBe('2026-08-05');
     expect(item.days).toBe(daysInclusive('2026-06-20', '2026-08-05'));
+  });
+
+  it('passes payment proofs through without touching the money math', () => {
+    const bare = presentRental(row());
+    expect(bare.paymentProofs).toEqual([]);
+
+    const withProofs = presentRental(row(), undefined, [
+      {
+        id: 7,
+        fileName: 'bukti.jpg',
+        contentType: 'image/jpeg',
+        sizeBytes: 1024,
+        status: 'uploaded',
+        url: '/partner/portal/rentals/proofs/7/file',
+        uploadedByName: 'Sri Rahayu',
+        uploadedByEmail: 'sri@example.com',
+        uploadedAt: '2026-07-05T03:00:00.000Z',
+      },
+    ]);
+    expect(withProofs.paymentProofs).toHaveLength(1);
+    expect(withProofs.paymentProofs[0]!.uploadedByName).toBe('Sri Rahayu');
+    // Evidence is metadata; every derived amount must be identical.
+    expect(withProofs.gross).toBe(bare.gross);
+    expect(withProofs.cogsTotal).toBe(bare.cogsTotal);
+    expect(withProofs.nettProfit).toBe(bare.nettProfit);
+    expect(withProofs.omset).toBe(bare.omset);
+  });
+});
+
+describe('presentProof', () => {
+  const proofRow = (overrides: Partial<RentalProofRow> = {}): RentalProofRow => ({
+    id: 3,
+    partnerId: 10,
+    rentalId: 1,
+    storageKey: 'partner/10/rentals/proofs/abc.jpg',
+    fileName: 'bukti-transfer.jpg',
+    contentType: 'image/jpeg',
+    sizeBytes: 2048,
+    status: 'uploaded',
+    uploadedByUserId: 42,
+    uploadedByName: 'Sri Rahayu',
+    uploadedByEmail: 'sri@example.com',
+    uploadedAt: new Date('2026-07-05T03:00:00.000Z'),
+    ...overrides,
+  });
+
+  it('snapshots the uploader and serializes uploadedAt as ISO', () => {
+    const dto = presentProof(proofRow(), '/partner/portal/rentals/proofs/3/file');
+    expect(dto).toMatchObject({
+      id: 3,
+      fileName: 'bukti-transfer.jpg',
+      contentType: 'image/jpeg',
+      sizeBytes: 2048,
+      status: 'uploaded',
+      url: '/partner/portal/rentals/proofs/3/file',
+      uploadedByName: 'Sri Rahayu',
+      uploadedByEmail: 'sri@example.com',
+      uploadedAt: '2026-07-05T03:00:00.000Z',
+    });
+    // The storage key is internal — it must never reach the client.
+    expect(dto).not.toHaveProperty('storageKey');
+  });
+
+  it('omits url entirely while the upload is still pending', () => {
+    const dto = presentProof(proofRow({ status: 'pending' }));
+    expect(dto.status).toBe('pending');
+    expect('url' in dto).toBe(false);
   });
 });
 

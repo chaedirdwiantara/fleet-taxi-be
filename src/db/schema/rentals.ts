@@ -44,6 +44,48 @@ export const rentals = pgTable(
 );
 
 /**
+ * Payment evidence for a rental (images/PDFs of the transfer receipt). A
+ * rental may only be marked 'Sudah Dibayar' while it carries at least one
+ * uploaded proof, capped at RENTAL_MAX_PROOFS — the money in the monthly
+ * recap counts paid rows only, so the status must be defensible.
+ *
+ * `rental_id` is NULLABLE on purpose: the add-rental form can upload evidence
+ * BEFORE the rental row exists, so a proof starts as a partner-owned draft and
+ * is attached when the rental is written. `partner_id` is therefore the
+ * authorization anchor for the whole lifecycle, not a denormalization.
+ *
+ * The uploader identity is SNAPSHOTTED (no FK to users, same reasoning as
+ * activity_logs): the audit trail must survive account deletion.
+ */
+export const rentalPaymentProofs = pgTable(
+  'rental_payment_proofs',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    partnerId: bigint('partner_id', { mode: 'number' })
+      .notNull()
+      .references(() => partners.id, { onDelete: 'cascade' }),
+    // NULL ⇒ draft uploaded before its rental existed; set on attach.
+    rentalId: bigint('rental_id', { mode: 'number' }).references(() => rentals.id, {
+      onDelete: 'cascade',
+    }),
+    storageKey: text('storage_key').notNull().unique(),
+    fileName: text('file_name').notNull(), // original name, display only
+    contentType: text('content_type').notNull(), // image/jpeg | image/png | application/pdf
+    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(), // declared at presign
+    status: text('status').notNull().default('pending'), // pending | uploaded
+    uploadedByUserId: bigint('uploaded_by_user_id', { mode: 'number' }),
+    uploadedByName: text('uploaded_by_name'),
+    uploadedByEmail: text('uploaded_by_email').notNull(),
+    uploadedAt: timestamp('uploaded_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('rental_payment_proofs_rental_idx').on(t.rentalId),
+    // Drives the draft sweep: partner's own unattached rows, oldest first.
+    index('rental_payment_proofs_partner_rental_idx').on(t.partnerId, t.rentalId),
+  ],
+);
+
+/**
  * Per-partner default COGS/day per vehicle-type key ("Setting COGS" in the
  * legacy page). Lazy-seeded with the legacy defaults on first read.
  */

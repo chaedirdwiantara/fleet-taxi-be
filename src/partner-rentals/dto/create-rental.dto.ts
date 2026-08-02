@@ -1,5 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsIn,
   IsInt,
   IsISO8601,
@@ -10,6 +13,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { PAYMENT_STATUSES, PRICE_UNITS, RENTAL_TYPES } from '../rental-presenter';
+import { RENTAL_MAX_PROOFS } from '../rental-proof.constants';
 
 /** Create/update a rental transaction (Rental Monitoring, legacy jadwal-mobil-cogs). */
 export class CreateRentalDto {
@@ -113,4 +117,17 @@ export class CreateRentalDto {
   @IsOptional()
   @IsIn(PAYMENT_STATUSES)
   paymentStatus?: (typeof PAYMENT_STATUSES)[number];
+
+  @ApiPropertyOptional({
+    type: [Number],
+    example: [12, 13],
+    description:
+      'Confirmed proof ids to attach to this rental. Required when paymentStatus is Sudah Dibayar.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(RENTAL_MAX_PROOFS)
+  @Type(() => Number)
+  @IsInt({ each: true })
+  paymentProofIds?: number[];
 }

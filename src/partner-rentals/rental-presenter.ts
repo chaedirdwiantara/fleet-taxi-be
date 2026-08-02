@@ -5,9 +5,10 @@
  * functions are pure so the month-clipping/aggregation math is unit-testable
  * without a database.
  */
-import { rentals } from '../db/schema';
+import { rentalPaymentProofs, rentals } from '../db/schema';
 
 type RentalRow = typeof rentals.$inferSelect;
+export type RentalProofRow = typeof rentalPaymentProofs.$inferSelect;
 
 export const PAYMENT_STATUSES = ['Belum Dibayar', 'Sudah Dibayar'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
@@ -20,6 +21,23 @@ export type RentalSortField = (typeof SORT_FIELDS)[number];
 export type SortOrder = 'asc' | 'desc';
 
 // ---- API DTOs ---------------------------------------------------------------
+
+/**
+ * One payment-evidence file. `uploadedBy*` is a snapshot taken at upload
+ * time — it answers "who marked this paid" even after the account is gone.
+ */
+export interface RentalPaymentProofDto {
+  id: number;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  status: string;
+  /** Present for uploaded proofs only (presigned S3 GET in prod). */
+  url?: string;
+  uploadedByName: string | null;
+  uploadedByEmail: string;
+  uploadedAt: string;
+}
 
 export interface RentalItemDto {
   id: number;
@@ -46,6 +64,13 @@ export interface RentalItemDto {
   customerName: string | null;
   customerPhone: string | null;
   paymentStatus: string;
+  /**
+   * Payment evidence. Rental Monitoring loads it, so it is non-empty there for
+   * every 'Sudah Dibayar' row; the All Fleet Monitoring paths leave it `[]`
+   * because that screen never shows evidence — treat empty as "not loaded"
+   * outside Rental Monitoring, not as "no proof exists".
+   */
+  paymentProofs: RentalPaymentProofDto[];
   gross: number;
   cogsTotal: number;
   nettProfit: number;
@@ -123,6 +148,7 @@ export function currentPeriodWib(now = new Date()): { month: number; year: numbe
 export function presentRental(
   row: RentalRow,
   clipTo?: { year: number; month: number },
+  paymentProofs: RentalPaymentProofDto[] = [],
 ): RentalItemDto {
   let displayStartDate = row.startDate;
   let displayEndDate = row.endDate;
@@ -156,12 +182,28 @@ export function presentRental(
     customerName: row.customerName,
     customerPhone: row.customerPhone,
     paymentStatus: row.paymentStatus,
+    paymentProofs,
     gross,
     cogsTotal,
     nettProfit: gross - cogsTotal - row.additionalCost,
     omset: gross + row.additionalCost,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+/** Map a proof row → DTO; `url` is present only once the object is uploaded. */
+export function presentProof(row: RentalProofRow, url?: string): RentalPaymentProofDto {
+  return {
+    id: row.id,
+    fileName: row.fileName,
+    contentType: row.contentType,
+    sizeBytes: row.sizeBytes,
+    status: row.status,
+    ...(url !== undefined && { url }),
+    uploadedByName: row.uploadedByName,
+    uploadedByEmail: row.uploadedByEmail,
+    uploadedAt: row.uploadedAt.toISOString(),
   };
 }
 

@@ -9,6 +9,8 @@ import { normalizePlate } from '../common/util/plate';
 import { DatabaseService } from '../db/database.service';
 import { rentals } from '../db/schema';
 import { CreateRentalDto } from './dto/create-rental.dto';
+import { RentalPaymentProofsService } from './rental-payment-proofs.service';
+import { RENTAL_PROOF_REQUIRED_MESSAGE } from './rental-proof.constants';
 import {
   currentPeriodWib,
   matchesSearch,
@@ -45,10 +47,20 @@ export interface RentalMonitoringDto {
   items: RentalItemDto[];
 }
 
-/** Rental Monitoring CRUD + monthly recap, row-scoped to the session partnerId. */
+/**
+ * Rental Monitoring CRUD + monthly recap, row-scoped to the session partnerId.
+ *
+ * Marking a rental 'Sudah Dibayar' moves money in the recap (only paid rows
+ * feed `summarizeRentals`/`nettByType`), so every write path that can produce
+ * that status attaches its evidence and asserts the rule in the SAME
+ * transaction — see `writePaidProofs`.
+ */
 @Injectable()
 export class PartnerRentalsService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly proofs: RentalPaymentProofsService,
+  ) {}
 
   async list(partnerId: number, filters: ListRentalsFilters): Promise<RentalMonitoringDto> {
     const period = this.resolvePeriod(filters);
@@ -67,7 +79,9 @@ export class PartnerRentalsService {
         ),
       );
 
-    let items = rows.map((r) => presentRental(r, period));
+    // One batched proof fetch for the whole page — never per row.
+    const proofsByRental = await this.proofs.viewsForRentals(rows.map((r) => r.id));
+    let items = rows.map((r) => presentRental(r, period, proofsByRental.get(r.id) ?? []));
 
     const region = filters.region?.trim();
     if (region) items = items.filter((i) => i.region === region);
@@ -150,11 +164,21 @@ export class PartnerRentalsService {
     const values = this.toRowValues(dto);
     await this.assertNoOverlap(partnerId, values.plateNumberNorm, dto, values.plateNumber);
 
-    const [row] = await this.database.db
-      .insert(rentals)
-      .values({ partnerId, ...values })
-      .returning();
-    return presentRental(row!);
+    const row = await this.database.db.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(rentals)
+        .values({ partnerId, ...values })
+        .returning();
+      await this.writePaidProofs(
+        tx,
+        partnerId,
+        inserted!.id,
+        inserted!.paymentStatus,
+        dto.paymentProofIds,
+      );
+      return inserted!;
+    });
+    return presentRental(row, undefined, await this.proofs.viewsForRental(row.id));
   }
 
   async update(partnerId: number, id: number, dto: CreateRentalDto): Promise<RentalItemDto> {
@@ -162,12 +186,16 @@ export class PartnerRentalsService {
     const values = this.toRowValues(dto);
     await this.assertNoOverlap(partnerId, values.plateNumberNorm, dto, values.plateNumber, id);
 
-    const [row] = await this.database.db
-      .update(rentals)
-      .set({ ...values, updatedAt: new Date() })
-      .where(and(eq(rentals.id, id), eq(rentals.partnerId, partnerId)))
-      .returning();
-    return presentRental(row!);
+    const row = await this.database.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(rentals)
+        .set({ ...values, updatedAt: new Date() })
+        .where(and(eq(rentals.id, id), eq(rentals.partnerId, partnerId)))
+        .returning();
+      await this.writePaidProofs(tx, partnerId, id, updated!.paymentStatus, dto.paymentProofIds);
+      return updated!;
+    });
+    return presentRental(row, undefined, await this.proofs.viewsForRental(id));
   }
 
   async remove(partnerId: number, id: number): Promise<{ deleted: true }> {
@@ -179,21 +207,49 @@ export class PartnerRentalsService {
     return { deleted: true };
   }
 
+  /**
+   * Toggles paid/unpaid. Reverting to 'Belum Dibayar' KEEPS the evidence: the
+   * audit trail of a payment that was once recorded must not vanish silently.
+   */
   async updatePaymentStatus(
     partnerId: number,
     id: number,
     paymentStatus: PaymentStatus,
+    paymentProofIds?: number[],
   ): Promise<RentalItemDto> {
-    const [row] = await this.database.db
-      .update(rentals)
-      .set({ paymentStatus, updatedAt: new Date() })
-      .where(and(eq(rentals.id, id), eq(rentals.partnerId, partnerId)))
-      .returning();
-    if (!row) throw new NotFoundException('Rental tidak ditemukan');
-    return presentRental(row);
+    const row = await this.database.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(rentals)
+        .set({ paymentStatus, updatedAt: new Date() })
+        .where(and(eq(rentals.id, id), eq(rentals.partnerId, partnerId)))
+        .returning();
+      if (!updated) throw new NotFoundException('Rental tidak ditemukan');
+      await this.writePaidProofs(tx, partnerId, id, paymentStatus, paymentProofIds);
+      return updated;
+    });
+    return presentRental(row, undefined, await this.proofs.viewsForRental(id));
   }
 
   // ---- internals -------------------------------------------------------------
+
+  /**
+   * Attaches the submitted evidence and enforces "paid ⇒ at least one proof",
+   * both inside the caller's transaction. Because the assertion runs on the
+   * POST-attach count, a rental that already carries evidence stays valid when
+   * its status is re-saved without resubmitting the ids.
+   */
+  private async writePaidProofs(
+    tx: Parameters<Parameters<DatabaseService['db']['transaction']>[0]>[0],
+    partnerId: number,
+    rentalId: number,
+    paymentStatus: string,
+    paymentProofIds: number[] | undefined,
+  ): Promise<void> {
+    const attached = await this.proofs.attach(tx, partnerId, rentalId, paymentProofIds ?? []);
+    if (paymentStatus === 'Sudah Dibayar' && attached === 0) {
+      throw new BadRequestException(RENTAL_PROOF_REQUIRED_MESSAGE);
+    }
+  }
 
   /** Distinct non-empty regions across ALL the partner's rentals, sorted asc. */
   private async regions(partnerId: number): Promise<string[]> {

@@ -2988,6 +2988,152 @@
         ]
       }
     },
+    "/partner/portal/rentals/proofs/presign": {
+      "post": {
+        "operationId": "PartnerRentalsController_presignProof",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignRentalProofDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Create a pending payment-proof row and get an upload URL (S3 presigned PUT in prod)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals/proofs/{proofId}/confirm": {
+      "post": {
+        "operationId": "PartnerRentalsController_confirmProof",
+        "parameters": [
+          {
+            "name": "proofId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Confirm a payment-proof upload finished (marks it uploaded)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals/proofs/{proofId}": {
+      "delete": {
+        "operationId": "PartnerRentalsController_removeProof",
+        "parameters": [
+          {
+            "name": "proofId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Delete one payment proof (refused if it is the last one of a paid rental)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals/proofs/{proofId}/upload": {
+      "put": {
+        "operationId": "PartnerRentalsController_uploadProof",
+        "parameters": [
+          {
+            "name": "proofId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Upload sink for presigned payment proofs (dev; prod presigns S3)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals/proofs/{proofId}/file": {
+      "get": {
+        "operationId": "PartnerRentalsController_proofFile",
+        "parameters": [
+          {
+            "name": "proofId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Stream one payment proof (dev; prod responses carry presigned S3 GET URLs)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
     "/partner/portal/rentals": {
       "get": {
         "operationId": "PartnerRentalsController_list",
@@ -4388,6 +4534,35 @@
           "cogsPerDay"
         ]
       },
+      "PresignRentalProofDto": {
+        "type": "object",
+        "properties": {
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "application/pdf"
+            ],
+            "example": "image/jpeg"
+          },
+          "sizeBytes": {
+            "type": "number",
+            "example": 350000,
+            "description": "Bytes, max 10485760"
+          },
+          "fileName": {
+            "type": "string",
+            "example": "bukti-transfer.jpg",
+            "description": "Original file name (display only)"
+          }
+        },
+        "required": [
+          "contentType",
+          "sizeBytes",
+          "fileName"
+        ]
+      },
       "CreateRentalDto": {
         "type": "object",
         "properties": {
@@ -4478,6 +4653,17 @@
               "Sudah Dibayar"
             ],
             "description": "Default 'Belum Dibayar'"
+          },
+          "paymentProofIds": {
+            "example": [
+              12,
+              13
+            ],
+            "description": "Confirmed proof ids to attach to this rental. Required when paymentStatus is Sudah Dibayar.",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
           }
         },
         "required": [
@@ -4498,6 +4684,17 @@
               "Sudah Dibayar"
             ],
             "example": "Sudah Dibayar"
+          },
+          "paymentProofIds": {
+            "example": [
+              12,
+              13
+            ],
+            "description": "Confirmed proof ids to attach. Required (together with any already-attached proof) when setting Sudah Dibayar.",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
           }
         },
         "required": [
