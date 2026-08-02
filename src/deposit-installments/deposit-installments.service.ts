@@ -8,10 +8,8 @@ import {
   filterCopRows,
   isCopTitle,
   presentCopRow,
-  summarizeCop,
   type CopQuery,
   type CopRowDto,
-  type CopSummaryDto,
 } from './cop-presenter';
 import { CreateDepositInstallmentDto } from './dto/create-deposit-installment.dto';
 import {
@@ -105,11 +103,6 @@ export class DepositInstallmentsService {
   }> {
     const rows = await this.buildCopRows(partnerId, query);
     return paginateRules(sortRules(rows, query), page, pageSize);
-  }
-
-  /** Programme totals over EVERY row the same filter selects, not one page. */
-  async copSummary(partnerId: number, query: CopQuery): Promise<CopSummaryDto> {
-    return summarizeCop(await this.buildCopRows(partnerId, query));
   }
 
   /** Rule summary + the full derived installment history (the "Rekap" view). */
