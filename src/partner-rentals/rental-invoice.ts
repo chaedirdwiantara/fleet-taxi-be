@@ -9,7 +9,7 @@
  * COGS and nett profit are deliberately absent — they are the partner's
  * internal margin, never shown to the customer being billed.
  */
-import { RentalItemDto } from './rental-presenter';
+import { ppnFor, RentalItemDto } from './rental-presenter';
 
 export interface InvoiceLine {
   description: string;
@@ -25,7 +25,7 @@ export interface RentalInvoiceDto {
   invoiceNumber: string;
   /** ISO instant the document was rendered. */
   issuedAt: string;
-  issuer: { name: string; code: string };
+  issuer: { name: string; code: string; npwp: string | null };
   customer: { name: string; phone: string | null };
   rental: {
     plateNumber: string;
@@ -38,7 +38,12 @@ export interface RentalInvoiceDto {
     days: number;
   };
   lines: InvoiceLine[];
+  /** DPP — the taxable base, i.e. the sum of the billable lines. */
   subtotal: number;
+  /** VAT rate in basis points; 0 when the issuer is not a PKP. */
+  ppnRateBps: number;
+  ppnAmount: number;
+  /** subtotal + ppnAmount — what the customer owes. */
   total: number;
   /** Security deposit held for the unit; informational, never netted off the total. */
   deposit: number;
@@ -169,11 +174,15 @@ export function amountInWords(amount: number): string {
  */
 export function buildRentalInvoice(
   item: RentalItemDto,
-  issuer: { name: string; code: string },
+  issuer: { name: string; code: string; npwp: string | null },
   issuedAt: Date,
 ): RentalInvoiceDto {
   const lines = invoiceLines(item);
   const subtotal = lines.reduce((sum, line) => sum + line.amount, 0);
+  // Recomputed from the line sum rather than read off the item so the printed
+  // VAT can never disagree with the lines printed above it.
+  const ppnAmount = ppnFor(subtotal, item.ppnRateBps);
+  const total = subtotal + ppnAmount;
   const uploaded = item.paymentProofs.filter((p) => p.status === 'uploaded');
   const settledAt = uploaded.reduce<string | null>(
     (latest, p) => (latest == null || p.uploadedAt > latest ? p.uploadedAt : latest),
@@ -197,9 +206,11 @@ export function buildRentalInvoice(
     },
     lines,
     subtotal,
-    total: subtotal,
+    ppnRateBps: item.ppnRateBps,
+    ppnAmount,
+    total,
     deposit: item.deposit,
-    amountInWords: amountInWords(subtotal),
+    amountInWords: amountInWords(total),
     payment: {
       status: item.paymentStatus,
       proofCount: uploaded.length,

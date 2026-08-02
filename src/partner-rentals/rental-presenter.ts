@@ -16,6 +16,25 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export const RENTAL_TYPES = ['Dengan Driver', 'Lepas Kunci'] as const;
 export const PRICE_UNITS = ['hari', 'bulan'] as const;
 
+/**
+ * PPN on rental services, in basis points. 11% is the effective burden on a
+ * non-luxury JKP: since PMK 131/2024 the headline rate is 12% applied to a
+ * `DPP nilai lain` of 11/12 of the price, which nets to exactly this. The
+ * commercial invoice we issue states 11% directly; the faktur pajak in
+ * Coretax presents the 12% × 11/12 split for the same rupiah.
+ */
+export const PPN_RATE_BPS = 1100;
+
+/**
+ * Rupiah VAT for a base amount. Single rounding point for the whole app —
+ * money is integer rupiah, so the half-up rounding must happen exactly once,
+ * here, or a line total and its recap will disagree by a rupiah.
+ */
+export function ppnFor(base: number, rateBps: number): number {
+  if (rateBps <= 0) return 0;
+  return Math.round((base * rateBps) / 10_000);
+}
+
 export const SORT_FIELDS = ['date', 'duration', 'status', 'omset', 'cogs'] as const;
 export type RentalSortField = (typeof SORT_FIELDS)[number];
 export type SortOrder = 'asc' | 'desc';
@@ -75,6 +94,13 @@ export interface RentalItemDto {
   cogsTotal: number;
   nettProfit: number;
   omset: number;
+  /** VAT rate captured when the row was written; 0 = not taxed. */
+  ppnRateBps: number;
+  /** DPP — gross + additionalCost, the amount PPN is charged on. */
+  ppnBase: number;
+  ppnAmount: number;
+  /** What the customer actually pays: ppnBase + ppnAmount. */
+  totalBilled: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -87,6 +113,14 @@ export interface RentalSummaryDto {
   paidCogs: number;
   paidAdditionalCost: number;
   paidNettProfit: number;
+  /**
+   * VAT collected on paid rows — money owed to the state, NOT revenue, so it
+   * is reported on its own and never folded into gross or nett profit.
+   */
+  paidPpn: number;
+  /** Cash actually invoiced on paid rows: paidGross + additionalCost + PPN. */
+  paidTotalBilled: number;
+  unpaidPpn: number;
 }
 
 export interface NettByTypeDto {
@@ -144,6 +178,14 @@ export function currentPeriodWib(now = new Date()): { month: number; year: numbe
  * additionalCost is a per-TRANSACTION total: it is counted in full, once, in
  * ANY month the rental appears in (a cross-month rental therefore carries its
  * whole additionalCost into every overlapped month — faithful legacy behavior).
+ *
+ * PPN rides on top of the same clipped figures:
+ *   ppnBase     = gross + additionalCost   (DPP — the whole consideration)
+ *   ppnAmount   = round(ppnBase × rate)
+ *   totalBilled = ppnBase + ppnAmount
+ * It is derived, not stored, so it follows month clipping exactly like gross
+ * does. `omset` and `nettProfit` deliberately EXCLUDE it: VAT is money held
+ * for the state, never the partner's revenue or margin.
  */
 export function presentRental(
   row: RentalRow,
@@ -160,6 +202,8 @@ export function presentRental(
   const days = daysInclusive(displayStartDate, displayEndDate);
   const gross = row.pricePerDay * days;
   const cogsTotal = row.cogsPerDay * days;
+  const ppnBase = gross + row.additionalCost;
+  const ppnAmount = ppnFor(ppnBase, row.ppnRateBps);
   return {
     id: row.id,
     plateNumber: row.plateNumber,
@@ -187,6 +231,10 @@ export function presentRental(
     cogsTotal,
     nettProfit: gross - cogsTotal - row.additionalCost,
     omset: gross + row.additionalCost,
+    ppnRateBps: row.ppnRateBps,
+    ppnBase,
+    ppnAmount,
+    totalBilled: ppnBase + ppnAmount,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -263,6 +311,9 @@ export function summarizeRentals(items: RentalItemDto[]): RentalSummaryDto {
     paidCogs,
     paidAdditionalCost,
     paidNettProfit: paidGross - paidCogs - paidAdditionalCost,
+    paidPpn: sum(paid, (i) => i.ppnAmount),
+    paidTotalBilled: sum(paid, (i) => i.totalBilled),
+    unpaidPpn: sum(unpaid, (i) => i.ppnAmount),
   };
 }
 

@@ -6,6 +6,7 @@ import {
   matchesSearch,
   monthBounds,
   nettByType,
+  ppnFor,
   presentProof,
   presentRental,
   rentalDailyIncome,
@@ -39,6 +40,7 @@ function row(overrides: Partial<RentalRow> = {}): RentalRow {
     customerName: 'Budi',
     customerPhone: null,
     paymentStatus: 'Belum Dibayar',
+    ppnRateBps: 0,
     createdAt: new Date('2026-07-01T00:00:00Z'),
     updatedAt: new Date('2026-07-01T00:00:00Z'),
     ...overrides,
@@ -258,6 +260,9 @@ describe('summarizeRentals', () => {
       paidCogs: 300_000,
       paidAdditionalCost: 50_000,
       paidNettProfit: 650_000,
+      paidPpn: 0,
+      paidTotalBilled: 1_050_000,
+      unpaidPpn: 0,
     });
   });
 
@@ -270,6 +275,9 @@ describe('summarizeRentals', () => {
       paidCogs: 0,
       paidAdditionalCost: 0,
       paidNettProfit: 0,
+      paidPpn: 0,
+      paidTotalBilled: 0,
+      unpaidPpn: 0,
     });
   });
 });
@@ -424,5 +432,43 @@ describe('currentPeriodWib', () => {
     // 2026-12-31 17:30 UTC = 2027-01-01 00:30 WIB → January next year
     expect(currentPeriodWib(new Date('2026-12-31T17:30:00Z'))).toEqual({ month: 1, year: 2027 });
     expect(currentPeriodWib(new Date('2026-07-12T05:00:00Z'))).toEqual({ month: 7, year: 2026 });
+  });
+});
+
+describe('PPN', () => {
+  it('is kept OUT of omset and nett profit — VAT is not the partner money', () => {
+    const item = presentRental(row({ additionalCost: 100_000, ppnRateBps: 1100 }));
+    expect(item.ppnAmount).toBeGreaterThan(0);
+    expect(item.omset).toBe(item.gross + item.additionalCost);
+    expect(item.nettProfit).toBe(item.gross - item.cogsTotal - item.additionalCost);
+    expect(item.totalBilled).toBe(item.omset + item.ppnAmount);
+  });
+
+  it('follows month clipping exactly like gross does', () => {
+    // A Jun 28 → Jul 3 booking shows only its July days in the July recap.
+    const july = presentRental(
+      row({
+        startDate: '2026-06-28',
+        endDate: '2026-07-03',
+        pricePerDay: 100_000,
+        ppnRateBps: 1100,
+      }),
+      { year: 2026, month: 7 },
+    );
+    expect(july.days).toBe(3);
+    expect(july.ppnBase).toBe(300_000 + july.additionalCost);
+    expect(july.ppnAmount).toBe(ppnFor(july.ppnBase, 1100));
+  });
+
+  it('reports collected VAT separately in the monthly summary', () => {
+    const paid = presentRental(row({ ppnRateBps: 1100, paymentStatus: 'Sudah Dibayar' }));
+    const unpaid = presentRental(row({ ppnRateBps: 1100, paymentStatus: 'Belum Dibayar' }));
+    const summary = summarizeRentals([paid, unpaid]);
+
+    expect(summary.paidPpn).toBe(paid.ppnAmount);
+    expect(summary.unpaidPpn).toBe(unpaid.ppnAmount);
+    expect(summary.paidTotalBilled).toBe(paid.omset + paid.ppnAmount);
+    // The margin figure must not move when VAT is switched on.
+    expect(summary.paidNettProfit).toBe(paid.gross - paid.cogsTotal - paid.additionalCost);
   });
 });

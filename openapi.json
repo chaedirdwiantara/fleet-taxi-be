@@ -2890,6 +2890,54 @@
         ]
       }
     },
+    "/partner/portal/rentals/tax-settings": {
+      "get": {
+        "operationId": "PartnerRentalsController_getTaxSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "The partner's PKP status, NPWP, and the PPN rate new rentals get",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "put": {
+        "operationId": "PartnerRentalsController_updateTaxSettings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaxSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Turn PPN on/off for future rentals and set the NPWP",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
     "/partner/portal/rentals/export": {
       "get": {
         "operationId": "PartnerRentalsController_export",
@@ -4719,6 +4767,24 @@
         "required": [
           "label",
           "cogsPerDay"
+        ]
+      },
+      "UpdateTaxSettingsDto": {
+        "type": "object",
+        "properties": {
+          "isPkp": {
+            "type": "boolean",
+            "description": "Pengusaha Kena Pajak — true enables PPN on new rental transactions",
+            "example": true
+          },
+          "npwp": {
+            "type": "string",
+            "description": "NPWP printed on invoices; digits/dots/dashes, empty clears it",
+            "example": "01.234.567.8-901.000"
+          }
+        },
+        "required": [
+          "isPkp"
         ]
       },
       "PresignRentalProofDto": {

@@ -9,7 +9,7 @@ import {
 } from './rental-invoice';
 import { presentRental } from './rental-presenter';
 
-const ISSUER = { name: 'Jayana Giri Sentosa', code: 'JGS' };
+const ISSUER = { name: 'Jayana Giri Sentosa', code: 'JGS', npwp: null };
 const ISSUED_AT = new Date('2026-08-02T03:00:00.000Z');
 
 type RentalRow = Parameters<typeof presentRental>[0];
@@ -36,6 +36,7 @@ function row(overrides: Partial<RentalRow> = {}): RentalRow {
     customerName: 'Andi Wijaya',
     customerPhone: '0812-3456-7890',
     paymentStatus: 'Sudah Dibayar',
+    ppnRateBps: 0,
     createdAt: new Date('2026-08-01T00:00:00Z'),
     updatedAt: new Date('2026-08-01T00:00:00Z'),
     ...overrides,
@@ -176,5 +177,52 @@ describe('buildRentalInvoice', () => {
       ISSUED_AT,
     );
     expect(invoice.customer).toEqual({ name: 'Pelanggan Umum', phone: null });
+  });
+});
+
+describe('PPN on the invoice', () => {
+  const PKP = { name: 'Jayana Giri Sentosa', code: 'JGS', npwp: '01.234.567.8-901.000' };
+
+  it('charges 11% on sewa PLUS biaya tambahan, never on the deposit', () => {
+    const item = presentRental(
+      row({ additionalCost: 275_000, deposit: 500_000, ppnRateBps: 1100 }),
+    );
+    const invoice = buildRentalInvoice(item, PKP, ISSUED_AT);
+
+    // 5 hari × 350.000 = 1.750.000, + 275.000 tambahan = DPP 2.025.000
+    expect(invoice.subtotal).toBe(2_025_000);
+    expect(invoice.ppnAmount).toBe(222_750); // 11% of the DPP, deposit excluded
+    expect(invoice.total).toBe(2_247_750);
+    expect(invoice.deposit).toBe(500_000);
+  });
+
+  it('spells the amount in words AFTER tax — that is what is owed', () => {
+    const invoice = buildRentalInvoice(presentRental(row({ ppnRateBps: 1100 })), PKP, ISSUED_AT);
+    expect(invoice.total).toBe(1_942_500); // 1.750.000 + 192.500
+    expect(invoice.amountInWords).toBe(
+      'Satu juta sembilan ratus empat puluh dua ribu lima ratus rupiah',
+    );
+  });
+
+  it('stays untaxed for a non-PKP issuer', () => {
+    const invoice = buildRentalInvoice(presentRental(row({ ppnRateBps: 0 })), ISSUER, ISSUED_AT);
+    expect(invoice.ppnAmount).toBe(0);
+    expect(invoice.total).toBe(invoice.subtotal);
+  });
+
+  it('rounds to whole rupiah — no cents ever reach the document', () => {
+    // 3 hari × 333.333 = 999.999 → 11% = 109.999,89
+    const item = presentRental(
+      row({ pricePerDay: 333_333, endDate: '2026-08-03', ppnRateBps: 1100 }),
+    );
+    const invoice = buildRentalInvoice(item, PKP, ISSUED_AT);
+    expect(invoice.subtotal).toBe(999_999);
+    expect(invoice.ppnAmount).toBe(110_000);
+    expect(Number.isInteger(invoice.total)).toBe(true);
+  });
+
+  it('prints the issuer NPWP so the document is usable for tax records', () => {
+    const invoice = buildRentalInvoice(presentRental(row({ ppnRateBps: 1100 })), PKP, ISSUED_AT);
+    expect(invoice.issuer.npwp).toBe('01.234.567.8-901.000');
   });
 });

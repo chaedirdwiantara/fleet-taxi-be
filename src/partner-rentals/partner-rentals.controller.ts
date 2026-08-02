@@ -24,12 +24,14 @@ import { requirePartner } from '../partner-portal/portal.util';
 import { CreateRentalDto } from './dto/create-rental.dto';
 import { PresignRentalProofDto } from './dto/presign-rental-proof.dto';
 import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto';
+import { UpdateTaxSettingsDto } from './dto/update-tax-settings.dto';
 import { UpsertCogsDefaultDto } from './dto/upsert-cogs-default.dto';
 import { ListRentalsFilters, PartnerRentalsService } from './partner-rentals.service';
 import { RentalCogsDefaultsService } from './rental-cogs-defaults.service';
 import { invoiceFileName } from './rental-invoice';
 import { RentalInvoicePdfService } from './rental-invoice-pdf.service';
 import { RentalPaymentProofsService } from './rental-payment-proofs.service';
+import { RentalTaxSettingsService } from './rental-tax-settings.service';
 import { RentalsExportService } from './rentals-export.service';
 
 const LIST_QUERIES = [
@@ -76,6 +78,7 @@ export class PartnerRentalsController {
     private readonly exportService: RentalsExportService,
     private readonly proofs: RentalPaymentProofsService,
     private readonly invoicePdf: RentalInvoicePdfService,
+    private readonly taxSettings: RentalTaxSettingsService,
   ) {}
 
   @Get('cogs-defaults')
@@ -88,6 +91,18 @@ export class PartnerRentalsController {
   @ApiOperation({ summary: 'Upsert one COGS default (key present → update, absent → create)' })
   upsertCogsDefault(@CurrentUser() user: SessionUser, @Body() dto: UpsertCogsDefaultDto) {
     return this.cogsDefaults.upsert(requirePartner(user), dto);
+  }
+
+  @Get('tax-settings')
+  @ApiOperation({ summary: "The partner's PKP status, NPWP, and the PPN rate new rentals get" })
+  getTaxSettings(@CurrentUser() user: SessionUser) {
+    return this.taxSettings.get(requirePartner(user));
+  }
+
+  @Put('tax-settings')
+  @ApiOperation({ summary: 'Turn PPN on/off for future rentals and set the NPWP' })
+  updateTaxSettings(@CurrentUser() user: SessionUser, @Body() dto: UpdateTaxSettingsDto) {
+    return this.taxSettings.update(requirePartner(user), dto);
   }
 
   @Get('export')
