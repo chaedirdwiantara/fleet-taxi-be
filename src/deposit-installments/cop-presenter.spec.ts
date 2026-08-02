@@ -4,7 +4,6 @@ import {
   filterCopRows,
   isCopTitle,
   presentCopRow,
-  summarizeCop,
   type CopQuery,
   type CopRowDto,
 } from './cop-presenter';
@@ -133,48 +132,6 @@ describe('presentCopRow', () => {
     expect(r.scheduleGap).toBe(0);
     expect(r.status).toBe('lunas');
     expect(r.tenorMonths).toBe(0); // 3 cicilan harian belum genap sebulan
-  });
-});
-
-describe('summarizeCop', () => {
-  const rows = (): CopRowDto[] => [
-    row(rule(), [day('2026-07-01', 408_000)]), // paid 20.000, gap +15.000
-    row(rule({ id: 2, driverName: 'SUWANTO', driverNameNorm: 'SUWANTO' }), [
-      day('2026-07-01', 600_000, 'SUWANTO'), // paid 212.000, gap −177.000
-    ]),
-    row(rule({ id: 3, minDailySetoran: null, installmentCount: 3 }), [
-      day('2026-07-01', 400_000),
-      day('2026-07-02', 400_000),
-      day('2026-07-03', 400_000), // lunas 105.000, gap 0
-    ]),
-  ];
-
-  it('aggregates the programme and counts DISTINCT drivers', () => {
-    const s = summarizeCop(rows());
-    expect(s.ruleCount).toBe(3);
-    expect(s.driverCount).toBe(2); // rule 1 & 3 share the same driver
-    expect(s.berjalanCount).toBe(2);
-    expect(s.lunasCount).toBe(1);
-    expect(s.totalPaid).toBe(20_000 + 212_000 + 105_000);
-    expect(s.totalWithdrawals).toBe(1 + 1 + 3);
-  });
-
-  it('sums only the POSITIVE gaps so paid-ahead rows cannot mask arrears', () => {
-    expect(summarizeCop(rows()).totalGap).toBe(15_000);
-  });
-
-  it('is zeroed, not NaN, for an empty programme', () => {
-    expect(summarizeCop([])).toEqual({
-      driverCount: 0,
-      ruleCount: 0,
-      berjalanCount: 0,
-      lunasCount: 0,
-      totalTarget: 0,
-      totalPaid: 0,
-      totalRemaining: 0,
-      totalGap: 0,
-      totalWithdrawals: 0,
-    });
   });
 });
 

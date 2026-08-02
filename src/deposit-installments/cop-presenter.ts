@@ -56,19 +56,6 @@ export interface CopRowDto extends InstallmentRuleDto {
   scheduleGap: number;
 }
 
-export interface CopSummaryDto {
-  driverCount: number;
-  ruleCount: number;
-  berjalanCount: number;
-  lunasCount: number;
-  totalTarget: number;
-  totalPaid: number;
-  totalRemaining: number;
-  /** Σ of the POSITIVE gaps only — paid-ahead rows must not mask arrears. */
-  totalGap: number;
-  totalWithdrawals: number;
-}
-
 export const COP_SORT_FIELDS = [
   'driverName',
   'effectiveDate',
@@ -109,32 +96,6 @@ export function presentCopRow(
     scheduleDue,
     scheduleGap: scheduleDue - base.totalPaid,
   };
-}
-
-/** Programme totals across EVERY matching row (never just the current page). */
-export function summarizeCop(rows: CopRowDto[]): CopSummaryDto {
-  const summary: CopSummaryDto = {
-    driverCount: new Set(rows.map((r) => r.driverName)).size,
-    ruleCount: rows.length,
-    berjalanCount: 0,
-    lunasCount: 0,
-    totalTarget: 0,
-    totalPaid: 0,
-    totalRemaining: 0,
-    totalGap: 0,
-    totalWithdrawals: 0,
-  };
-
-  for (const row of rows) {
-    if (row.status === 'lunas') summary.lunasCount += 1;
-    else summary.berjalanCount += 1;
-    summary.totalTarget += row.totalTarget;
-    summary.totalPaid += row.totalPaid;
-    summary.totalRemaining += row.remaining;
-    summary.totalGap += Math.max(0, row.scheduleGap);
-    summary.totalWithdrawals += row.withdrawalCount;
-  }
-  return summary;
 }
 
 /**

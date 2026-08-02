@@ -48,7 +48,6 @@ const EXPECTED_OPERATIONS = [
   'GET /partner/portal/dashboard',
   'GET /partner/portal/deposit-installments',
   'GET /partner/portal/deposit-installments/cop',
-  'GET /partner/portal/deposit-installments/cop/summary',
   'GET /partner/portal/deposit-installments/driver-options',
   'GET /partner/portal/deposit-installments/{id}/recap',
   'GET /partner/portal/drivers',

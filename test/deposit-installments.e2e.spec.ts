@@ -359,32 +359,11 @@ describe('deposit installments (cicilan deposit)', () => {
       expect(row!.scheduleGap).toBe(140_000 - PAID);
     });
 
-    it('summary aggregates every matching rule and clamps paid-ahead gaps to zero', async () => {
-      const res = await agentA.get('/partner/portal/deposit-installments/cop/summary').expect(200);
-      expect(res.body.data).toEqual({
-        driverCount: 1,
-        ruleCount: 1,
-        berjalanCount: 1,
-        lunasCount: 0,
-        totalTarget: TARGET,
-        totalPaid: PAID,
-        totalRemaining: TARGET - PAID,
-        totalGap: 0,
-        totalWithdrawals: 2,
-      });
-    });
-
-    it('honours the status filter on both the list and the summary', async () => {
+    it('honours the status filter', async () => {
       const list = await agentA
         .get('/partner/portal/deposit-installments/cop?status=lunas')
         .expect(200);
       expect(list.body.meta.total).toBe(0);
-
-      const summary = await agentA
-        .get('/partner/portal/deposit-installments/cop/summary?status=lunas')
-        .expect(200);
-      expect(summary.body.data.ruleCount).toBe(0);
-      expect(summary.body.data.totalTarget).toBe(0);
     });
 
     it('rejects an unknown sortBy', async () => {
@@ -394,10 +373,6 @@ describe('deposit installments (cicilan deposit)', () => {
     it('cross-partner isolation: partner B sees an empty programme', async () => {
       const list = await agentB.get('/partner/portal/deposit-installments/cop').expect(200);
       expect(list.body.meta.total).toBe(0);
-      const summary = await agentB
-        .get('/partner/portal/deposit-installments/cop/summary')
-        .expect(200);
-      expect(summary.body.data.ruleCount).toBe(0);
     });
   });
 });

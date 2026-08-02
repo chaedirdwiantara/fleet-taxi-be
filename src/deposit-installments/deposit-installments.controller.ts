@@ -132,15 +132,6 @@ export class DepositInstallmentsController {
     return this.installments.listCop(partnerId, parseCopQuery(raw), page, pageSize);
   }
 
-  @Get('cop/summary')
-  @ApiOperation({
-    summary: 'Car Ownership Program totals across every own COP rule the filter selects',
-  })
-  @CopQueries()
-  copSummary(@CurrentUser() user: SessionUser, @Query() raw: Record<string, string | undefined>) {
-    return this.installments.copSummary(requirePartner(user), parseCopQuery(raw));
-  }
-
   @Get()
   @ApiOperation({ summary: 'Own cicilan-deposit rules with derived payment progress' })
   @ListQueries()
