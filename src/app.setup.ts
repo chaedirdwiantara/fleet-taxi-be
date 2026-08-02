@@ -69,5 +69,9 @@ export function configureApp(app: INestApplication): void {
   app.enableCors({
     origin: corsOrigins({ CORS_ORIGINS: config.get('CORS_ORIGINS', { infer: true }) }),
     credentials: true,
+    // Downloads (invoice PDF, xlsx/pdf recaps) carry their filename here. It is
+    // NOT a CORS-safelisted response header, so without this the browser hides
+    // it cross-subdomain (app → api) and the client falls back to a guessed name.
+    exposedHeaders: ['Content-Disposition'],
   });
 }
