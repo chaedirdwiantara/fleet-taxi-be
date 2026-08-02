@@ -3353,6 +3353,35 @@
         ]
       }
     },
+    "/partner/portal/rentals/{id}/invoice": {
+      "get": {
+        "operationId": "PartnerRentalsController_invoice",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Download the PDF invoice of one own PAID rental",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
     "/partner/portal/deposit-installments/driver-options": {
       "get": {
         "operationId": "DepositInstallmentsController_driverOptions",
