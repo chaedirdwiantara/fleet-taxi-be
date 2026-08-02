@@ -281,4 +281,123 @@ describe('deposit installments (cicilan deposit)', () => {
     const list = await agentA.get('/partner/portal/deposit-installments').expect(200);
     expect(list.body.meta.total).toBe(0);
   });
+
+  /**
+   * Car Ownership Program report — the COP-titled subset of the same rules,
+   * derived from the same ledger. Runs last so it starts from an empty list.
+   */
+  describe('car ownership program report', () => {
+    const EFFECTIVE = `${YEAR}-0${MONTH}-01`;
+    let copId: number;
+    let otherId: number;
+
+    // Ledger over the shared import data (min setoran 100.000, nominal 35.000):
+    //   d1 150.000 → surplus  50.000 → potong 50.000
+    //   d2 100.000 → surplus       0 → potong 0
+    //   d3  99.999 → kurang        1 → potong 0, tunggakan 1
+    //   d4 200.000 → wajib 100.001   → potong 99.999
+    const PAID = 149_999;
+    const TARGET = 35_000 * 1800;
+
+    beforeAll(async () => {
+      // 1800 daily installments = 60 months — also a regression on the old
+      // installmentCount cap of 999, which made a COP rule impossible.
+      const cop = await agentA
+        .post('/partner/portal/deposit-installments')
+        .send({
+          title: 'COP (Car Ownership Program)',
+          driverName: DRIVER,
+          installmentAmount: 35000,
+          installmentCount: 1800,
+          minDailySetoran: 100000,
+          effectiveDate: EFFECTIVE,
+        })
+        .expect(201);
+      copId = cop.body.data.id as number;
+
+      const other = await agentA
+        .post('/partner/portal/deposit-installments')
+        .send({
+          title: 'Kontrakan',
+          driverName: DRIVER,
+          installmentAmount: 25000,
+          installmentCount: 4,
+          minDailySetoran: 100000,
+          effectiveDate: EFFECTIVE,
+        })
+        .expect(201);
+      otherId = other.body.data.id as number;
+    });
+
+    afterAll(async () => {
+      await agentA.delete(`/partner/portal/deposit-installments/${copId}`).expect(200);
+      await agentA.delete(`/partner/portal/deposit-installments/${otherId}`).expect(200);
+    });
+
+    it('returns only COP-titled rules, with the programme figures', async () => {
+      const res = await agentA
+        .get('/partner/portal/deposit-installments/cop?page=1&pageSize=10')
+        .expect(200);
+      expect(res.body.meta).toEqual({ page: 1, pageSize: 10, total: 1 });
+
+      const [row] = res.body.data as Array<Record<string, unknown>>;
+      expect(row!.id).toBe(copId); // 'Kontrakan' is not part of the programme
+      expect(row!.driverName).toBe(DRIVER);
+      expect(row!.lastPlate).toBe(PLATE_A_NORM);
+      expect(row!.tenorMonths).toBe(60);
+      expect(row!.totalTarget).toBe(TARGET);
+      expect(row!.totalPaid).toBe(PAID);
+      expect(row!.remaining).toBe(TARGET - PAID);
+      expect(row!.status).toBe('berjalan');
+      // 4 active days, but only 2 of them actually took money
+      expect(row!.activeDays).toBe(4);
+      expect(row!.withdrawalCount).toBe(2);
+      expect(row!.firstWithdrawalDate).toBe(`${YEAR}-03-01`);
+      expect(row!.lastInstallmentDate).toBe(`${YEAR}-03-04`);
+      // schedule wanted 4 × 35.000; the surplus paid more → ahead, gap negative
+      expect(row!.scheduleDue).toBe(140_000);
+      expect(row!.scheduleGap).toBe(140_000 - PAID);
+    });
+
+    it('summary aggregates every matching rule and clamps paid-ahead gaps to zero', async () => {
+      const res = await agentA.get('/partner/portal/deposit-installments/cop/summary').expect(200);
+      expect(res.body.data).toEqual({
+        driverCount: 1,
+        ruleCount: 1,
+        berjalanCount: 1,
+        lunasCount: 0,
+        totalTarget: TARGET,
+        totalPaid: PAID,
+        totalRemaining: TARGET - PAID,
+        totalGap: 0,
+        totalWithdrawals: 2,
+      });
+    });
+
+    it('honours the status filter on both the list and the summary', async () => {
+      const list = await agentA
+        .get('/partner/portal/deposit-installments/cop?status=lunas')
+        .expect(200);
+      expect(list.body.meta.total).toBe(0);
+
+      const summary = await agentA
+        .get('/partner/portal/deposit-installments/cop/summary?status=lunas')
+        .expect(200);
+      expect(summary.body.data.ruleCount).toBe(0);
+      expect(summary.body.data.totalTarget).toBe(0);
+    });
+
+    it('rejects an unknown sortBy', async () => {
+      await agentA.get('/partner/portal/deposit-installments/cop?sortBy=title').expect(400);
+    });
+
+    it('cross-partner isolation: partner B sees an empty programme', async () => {
+      const list = await agentB.get('/partner/portal/deposit-installments/cop').expect(200);
+      expect(list.body.meta.total).toBe(0);
+      const summary = await agentB
+        .get('/partner/portal/deposit-installments/cop/summary')
+        .expect(200);
+      expect(summary.body.data.ruleCount).toBe(0);
+    });
+  });
 });
