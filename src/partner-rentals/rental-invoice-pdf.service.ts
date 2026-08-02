@@ -130,20 +130,23 @@ export class RentalInvoicePdfService {
     const header = h(
       View,
       { style: { flexDirection: 'row', alignItems: 'flex-start' } },
+      // The PARTNER is the seller here — the party rendering the service, and
+      // the one collecting PPN if it is a PKP. Fleet Taxi only issues the
+      // document, so it appears as a subordinate "powered by" line: prominence
+      // must not suggest the platform is a party to the transaction.
       h(
         View,
-        { style: { flex: 1 } },
+        { style: { flex: 1, paddingRight: 16 } },
+        text(invoice.issuer.name, { fontSize: 17, fontWeight: 700 }),
+        invoice.issuer.npwp
+          ? text(`NPWP ${invoice.issuer.npwp}`, { fontSize: 8.5, color: MUTED, marginTop: 3 })
+          : null,
         h(
           Text,
-          { style: { fontSize: 18, fontWeight: 700, color: INK } },
-          'Fleet ',
-          h(Text, { style: { color: BRAND } }, 'Taxi'),
+          { style: { fontSize: 7, color: MUTED, marginTop: invoice.issuer.npwp ? 6 : 5 } },
+          'Powered by ',
+          h(Text, { style: { color: BRAND, fontWeight: 700 } }, 'Fleet Taxi'),
         ),
-        text(invoice.issuer.name, { fontSize: 10, marginTop: 4 }),
-        text(`Partner ${invoice.issuer.code}`, { fontSize: 8, color: MUTED, marginTop: 1 }),
-        invoice.issuer.npwp
-          ? text(`NPWP ${invoice.issuer.npwp}`, { fontSize: 8, color: MUTED, marginTop: 1 })
-          : null,
       ),
       h(
         View,
@@ -362,10 +365,11 @@ export class RentalInvoicePdfService {
             })
           : null,
         invoice.payment.proofCount > 0
-          ? text(
-              `${invoice.payment.proofCount} bukti pembayaran terarsip pada sistem Fleet Taxi.`,
-              { fontSize: 8, color: MUTED, marginTop: 2 },
-            )
+          ? text(`${invoice.payment.proofCount} bukti pembayaran terarsip.`, {
+              fontSize: 8,
+              color: MUTED,
+              marginTop: 2,
+            })
           : null,
       ),
       h(
@@ -395,7 +399,9 @@ export class RentalInvoicePdfService {
         },
       },
       text(
-        'Dokumen ini dibuat otomatis oleh Fleet Taxi Dashboard dan sah tanpa tanda tangan basah.',
+        // The platform is already credited in the header; naming it again here
+        // would push a vendor mention onto a document the partner issues.
+        `Dokumen ini diterbitkan oleh ${invoice.issuer.name}, dibuat otomatis dan sah tanpa tanda tangan basah.`,
         {
           fontSize: 7,
           color: MUTED,
