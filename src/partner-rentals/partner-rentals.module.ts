@@ -5,6 +5,7 @@ import { PartnerRentalsService } from './partner-rentals.service';
 import { RentalCogsDefaultsService } from './rental-cogs-defaults.service';
 import { RentalInvoicePdfService } from './rental-invoice-pdf.service';
 import { RentalPaymentProofsService } from './rental-payment-proofs.service';
+import { RentalTaxSettingsService } from './rental-tax-settings.service';
 import { RentalsExportService } from './rentals-export.service';
 
 /** Rental Monitoring (partner portal) — legacy admin/jadwal-mobil-cogs port. */
@@ -17,6 +18,7 @@ import { RentalsExportService } from './rentals-export.service';
     RentalsExportService,
     RentalPaymentProofsService,
     RentalInvoicePdfService,
+    RentalTaxSettingsService,
   ],
   // Rental income is one of the three sources of the partner portal's All Fleet
   // Monitoring matrix, so the portal module reads it through this service rather

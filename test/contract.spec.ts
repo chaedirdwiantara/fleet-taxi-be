@@ -72,6 +72,7 @@ const EXPECTED_OPERATIONS = [
   'GET /partner/portal/rentals/cogs-defaults',
   'GET /partner/portal/rentals/export',
   'GET /partner/portal/rentals/proofs/{proofId}/file',
+  'GET /partner/portal/rentals/tax-settings',
   'GET /partner/portal/rentals/{id}/invoice',
   'GET /partner/v1/orders',
   'GET /partner/v1/orders/{id}',
@@ -113,6 +114,7 @@ const EXPECTED_OPERATIONS = [
   'PUT /partner/portal/plates/{id}',
   'PUT /partner/portal/rentals/cogs-defaults',
   'PUT /partner/portal/rentals/proofs/{proofId}/upload',
+  'PUT /partner/portal/rentals/tax-settings',
   'PUT /partner/portal/rentals/{id}',
 ];
 

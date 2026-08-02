@@ -165,6 +165,42 @@ describe('rental invoice', () => {
     expect(res.body.error.code).toBe('NOT_FOUND');
   }, 30_000);
 
+  it('adds PPN once the partner is PKP, and only to rentals written after', async () => {
+    // Written while non-PKP → untaxed, and stays untaxed after settling.
+    const before = await createPaidRental(agentA);
+
+    await agentA
+      .put('/partner/portal/rentals/tax-settings')
+      .send({ isPkp: true, npwp: '01.234.567.8-901.000' })
+      .expect(200);
+
+    const after = await createPaidRental(agentA);
+    const list = await agentA.get(`/partner/portal/rentals?month=3&year=${YEAR}`).expect(200);
+    const items = list.body.data.items as Array<Record<string, number>>;
+    const row = (id: number) => items.find((i) => i.id === id)!;
+
+    expect(row(before).ppnRateBps).toBe(0);
+    expect(row(before).ppnAmount).toBe(0);
+    expect(row(after).ppnRateBps).toBe(1100);
+    // 3 hari x 500.000 = 1.500.000 DPP -> 165.000
+    expect(row(after).ppnBase).toBe(1_500_000);
+    expect(row(after).ppnAmount).toBe(165_000);
+    expect(row(after).totalBilled).toBe(1_665_000);
+
+    // VAT is reported apart from revenue, never folded into it.
+    const summary = list.body.data.summary as Record<string, number>;
+    expect(summary.paidPpn).toBe(165_000);
+    expect(summary.paidGross).toBe(summary.paidTotalBilled - summary.paidPpn);
+  }, 60_000);
+
+  it('rejects an NPWP with letters in it', async () => {
+    const res = await agentA
+      .put('/partner/portal/rentals/tax-settings')
+      .send({ isPkp: true, npwp: 'NPWP-ABC' })
+      .expect(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
   it('404s an unknown rental id', async () => {
     const res = await agentA.get('/partner/portal/rentals/99999999/invoice').expect(404);
     expect(res.body.error.code).toBe('NOT_FOUND');

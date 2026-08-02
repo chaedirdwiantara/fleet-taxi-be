@@ -1,4 +1,13 @@
-import { bigint, date, index, pgTable, text, timestamp, unique } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  date,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+} from 'drizzle-orm/pg-core';
 import { partners } from './partners';
 
 /**
@@ -33,6 +42,14 @@ export const rentals = pgTable(
     customerName: text('customer_name'),
     customerPhone: text('customer_phone'),
     paymentStatus: text('payment_status').notNull().default('Belum Dibayar'), // | 'Sudah Dibayar'
+    /**
+     * VAT rate in basis points, CAPTURED AT WRITE TIME from the partner's PKP
+     * status (1100 = 11%, 0 = not taxed). Stored per row rather than read from
+     * a constant so a rate change — or a partner becoming PKP — never rewrites
+     * what past invoices already billed. The rupiah amount stays derived, like
+     * every other money figure here.
+     */
+    ppnRateBps: integer('ppn_rate_bps').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

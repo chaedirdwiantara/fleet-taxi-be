@@ -19,6 +19,8 @@ const COLUMNS: Array<{
   { header: 'Status Bayar', value: (r) => r.paymentStatus },
   { header: 'Gross', value: (r) => r.gross },
   { header: 'Additional Cost', value: (r) => r.additionalCost },
+  { header: 'PPN', value: (r) => r.ppnAmount },
+  { header: 'Total Tagihan', value: (r) => r.totalBilled },
   { header: 'COGS', value: (r) => r.cogsTotal },
   { header: 'Nett Profit', value: (r) => r.nettProfit },
 ];
@@ -29,6 +31,8 @@ function totalRow(summary: RentalSummaryDto): Array<string | number> {
   row[0] = 'TOTAL (Paid Only)';
   row[COLUMNS.findIndex((c) => c.header === 'Gross')] = summary.paidGross;
   row[COLUMNS.findIndex((c) => c.header === 'Additional Cost')] = summary.paidAdditionalCost;
+  row[COLUMNS.findIndex((c) => c.header === 'PPN')] = summary.paidPpn;
+  row[COLUMNS.findIndex((c) => c.header === 'Total Tagihan')] = summary.paidTotalBilled;
   row[COLUMNS.findIndex((c) => c.header === 'COGS')] = summary.paidCogs;
   row[COLUMNS.findIndex((c) => c.header === 'Nett Profit')] = summary.paidNettProfit;
   return row;

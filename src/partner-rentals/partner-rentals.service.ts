@@ -19,6 +19,7 @@ import {
   nettByType,
   NettByTypeDto,
   PaymentStatus,
+  PPN_RATE_BPS,
   presentRental,
   rentalBookingDays,
   rentalDailyIncome,
@@ -164,11 +165,12 @@ export class PartnerRentalsService {
   async create(partnerId: number, dto: CreateRentalDto): Promise<RentalItemDto> {
     const values = this.toRowValues(dto);
     await this.assertNoOverlap(partnerId, values.plateNumberNorm, dto, values.plateNumber);
+    const ppnRateBps = await this.currentPpnRateBps(partnerId);
 
     const row = await this.database.db.transaction(async (tx) => {
       const [inserted] = await tx
         .insert(rentals)
-        .values({ partnerId, ...values })
+        .values({ partnerId, ...values, ppnRateBps })
         .returning();
       await this.writePaidProofs(
         tx,
@@ -183,14 +185,23 @@ export class PartnerRentalsService {
   }
 
   async update(partnerId: number, id: number, dto: CreateRentalDto): Promise<RentalItemDto> {
-    await this.requireOwned(partnerId, id);
+    const existing = await this.requireOwned(partnerId, id);
     const values = this.toRowValues(dto);
     await this.assertNoOverlap(partnerId, values.plateNumberNorm, dto, values.plateNumber, id);
+
+    // An unpaid rental re-reads the partner's current PKP status (turning PKP
+    // on should apply to bills not yet issued); a settled one keeps the rate it
+    // was billed at, so fixing a typo can never move an amount the customer
+    // has already paid.
+    const ppnRateBps =
+      existing.paymentStatus === 'Sudah Dibayar'
+        ? existing.ppnRateBps
+        : await this.currentPpnRateBps(partnerId);
 
     const row = await this.database.db.transaction(async (tx) => {
       const [updated] = await tx
         .update(rentals)
-        .set({ ...values, updatedAt: new Date() })
+        .set({ ...values, ppnRateBps, updatedAt: new Date() })
         .where(and(eq(rentals.id, id), eq(rentals.partnerId, partnerId)))
         .returning();
       await this.writePaidProofs(tx, partnerId, id, updated!.paymentStatus, dto.paymentProofIds);
@@ -253,7 +264,7 @@ export class PartnerRentalsService {
     }
 
     const [partner] = await this.database.db
-      .select({ name: partners.name, code: partners.code })
+      .select({ name: partners.name, code: partners.code, npwp: partners.npwp })
       .from(partners)
       .where(eq(partners.id, partnerId));
     if (!partner) throw new NotFoundException('Partner tidak ditemukan');
@@ -358,12 +369,29 @@ export class PartnerRentalsService {
     };
   }
 
-  private async requireOwned(partnerId: number, id: number): Promise<void> {
+  private async requireOwned(
+    partnerId: number,
+    id: number,
+  ): Promise<{ id: number; paymentStatus: string; ppnRateBps: number }> {
     const [row] = await this.database.db
-      .select({ id: rentals.id })
+      .select({
+        id: rentals.id,
+        paymentStatus: rentals.paymentStatus,
+        ppnRateBps: rentals.ppnRateBps,
+      })
       .from(rentals)
       .where(and(eq(rentals.id, id), eq(rentals.partnerId, partnerId)));
     if (!row) throw new NotFoundException('Rental tidak ditemukan');
+    return row;
+  }
+
+  /** The VAT rate a NEW rental of this partner is written with. */
+  private async currentPpnRateBps(partnerId: number): Promise<number> {
+    const [partner] = await this.database.db
+      .select({ isPkp: partners.isPkp })
+      .from(partners)
+      .where(eq(partners.id, partnerId));
+    return partner?.isPkp ? PPN_RATE_BPS : 0;
   }
 
   /** Same plate must not have two rentals of this partner on overlapping dates. */

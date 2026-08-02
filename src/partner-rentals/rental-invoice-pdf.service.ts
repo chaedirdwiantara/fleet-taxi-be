@@ -40,6 +40,11 @@ function rupiah(amount: number): string {
   return `Rp ${RUPIAH_FMT.format(amount)}`;
 }
 
+/** 1100 → "11%", 1050 → "10,5%" (basis points, id-ID decimal comma). */
+function formatRate(rateBps: number): string {
+  return `${(rateBps / 100).toLocaleString('id-ID', { maximumFractionDigits: 2 })}%`;
+}
+
 /** 'YYYY-MM-DD' → "2 Agustus 2026". Parsed as UTC noon so the WIB day is exact. */
 function formatDate(isoDate: string): string {
   return DATE_FMT.format(new Date(`${isoDate}T12:00:00Z`));
@@ -136,6 +141,9 @@ export class RentalInvoicePdfService {
         ),
         text(invoice.issuer.name, { fontSize: 10, marginTop: 4 }),
         text(`Partner ${invoice.issuer.code}`, { fontSize: 8, color: MUTED, marginTop: 1 }),
+        invoice.issuer.npwp
+          ? text(`NPWP ${invoice.issuer.npwp}`, { fontSize: 8, color: MUTED, marginTop: 1 })
+          : null,
       ),
       h(
         View,
@@ -309,7 +317,10 @@ export class RentalInvoicePdfService {
       h(
         View,
         { style: { width: 220 } },
-        totalRow('Subtotal', rupiah(invoice.subtotal)),
+        totalRow(invoice.ppnAmount > 0 ? 'DPP' : 'Subtotal', rupiah(invoice.subtotal)),
+        invoice.ppnAmount > 0
+          ? totalRow(`PPN ${formatRate(invoice.ppnRateBps)}`, rupiah(invoice.ppnAmount))
+          : null,
         totalRow('Total Tagihan', rupiah(invoice.total), true),
       ),
     );
