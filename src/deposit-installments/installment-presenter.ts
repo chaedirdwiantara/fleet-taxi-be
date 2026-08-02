@@ -213,8 +213,15 @@ export function filterRules(rows: InstallmentRuleDto[], q: InstallmentQuery): In
   return out;
 }
 
-/** Every sortable field maps 1:1 to the DISPLAYED value (legacy bug: mislabeled sorts). */
-export function sortRules(rows: InstallmentRuleDto[], q: InstallmentQuery): InstallmentRuleDto[] {
+/**
+ * Every sortable field maps 1:1 to the DISPLAYED value (legacy bug: mislabeled
+ * sorts). Generic over the row shape so the COP report reuses it rather than
+ * copying the comparator (see cop-presenter.ts).
+ */
+export function sortRules<T extends { id: number }>(
+  rows: T[],
+  q: { sortBy: keyof T & string; sortOrder: 'asc' | 'desc' },
+): T[] {
   const dir = q.sortOrder === 'desc' ? -1 : 1;
   return [...rows].sort((a, b) => {
     const va = a[q.sortBy];
@@ -228,11 +235,11 @@ export function sortRules(rows: InstallmentRuleDto[], q: InstallmentQuery): Inst
   });
 }
 
-export function paginateRules(
-  rows: InstallmentRuleDto[],
+export function paginateRules<T>(
+  rows: T[],
   page: number,
   pageSize: number,
-): { data: InstallmentRuleDto[]; meta: { page: number; pageSize: number; total: number } } {
+): { data: T[]; meta: { page: number; pageSize: number; total: number } } {
   const start = (page - 1) * pageSize;
   return {
     data: rows.slice(start, start + pageSize),

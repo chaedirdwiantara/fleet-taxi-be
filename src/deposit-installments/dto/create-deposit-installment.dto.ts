@@ -29,10 +29,14 @@ export class CreateDepositInstallmentDto {
   @Min(1)
   installmentAmount!: number;
 
-  @ApiProperty({ example: 20, description: 'Durasi: jumlah cicilan (Nx)' })
+  @ApiProperty({
+    example: 20,
+    description:
+      'Durasi: jumlah cicilan harian (Nx). Program COP 60 bulan = 60 × 30 = 1800 cicilan.',
+  })
   @IsInt()
   @Min(1)
-  @Max(999)
+  @Max(3650) // ~10 tahun cicilan harian — cukup untuk COP 60 bulan (1800)
   installmentCount!: number;
 
   @ApiPropertyOptional({

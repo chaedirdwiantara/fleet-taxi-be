@@ -4,6 +4,15 @@ import { DatabaseService } from '../db/database.service';
 import { depositInstallments } from '../db/schema';
 import { normalizeDriverName } from '../partner-drivers/driver.constants';
 import { PortalPlatesService } from '../partner-portal/portal-plates.service';
+import {
+  filterCopRows,
+  isCopTitle,
+  presentCopRow,
+  summarizeCop,
+  type CopQuery,
+  type CopRowDto,
+  type CopSummaryDto,
+} from './cop-presenter';
 import { CreateDepositInstallmentDto } from './dto/create-deposit-installment.dto';
 import {
   computeInstallments,
@@ -78,6 +87,29 @@ export class DepositInstallmentsService {
       .returning({ id: depositInstallments.id });
     if (!row) throw new NotFoundException('Cicilan deposit tidak ditemukan');
     return { deleted: true };
+  }
+
+  /**
+   * Car Ownership Program report — the COP-titled subset of the partner's own
+   * rules, enriched with programme figures (see cop-presenter.ts). Read-only:
+   * COP rows are created and edited through the Cicilan endpoints above.
+   */
+  async listCop(
+    partnerId: number,
+    query: CopQuery,
+    page: number,
+    pageSize: number,
+  ): Promise<{
+    data: CopRowDto[];
+    meta: { page: number; pageSize: number; total: number };
+  }> {
+    const rows = await this.buildCopRows(partnerId, query);
+    return paginateRules(sortRules(rows, query), page, pageSize);
+  }
+
+  /** Programme totals over EVERY row the same filter selects, not one page. */
+  async copSummary(partnerId: number, query: CopQuery): Promise<CopSummaryDto> {
+    return summarizeCop(await this.buildCopRows(partnerId, query));
   }
 
   /** Rule summary + the full derived installment history (the "Rekap" view). */
@@ -167,6 +199,33 @@ export class DepositInstallmentsService {
         ctx.lastPlateByDriver.get(rule.driverNameNorm) ?? null,
       ),
     );
+  }
+
+  /**
+   * COP rows through the same single-context path as buildRows(): the title
+   * filter runs BEFORE importContext() so a partner with one COP driver pays
+   * for one driver's aggregates, not the whole roster's.
+   */
+  private async buildCopRows(partnerId: number, query: CopQuery): Promise<CopRowDto[]> {
+    const rows = await this.database.db
+      .select()
+      .from(depositInstallments)
+      .where(eq(depositInstallments.partnerId, partnerId));
+
+    const rules = rows.map((r) => this.toRule(r)).filter((r) => isCopTitle(r.title));
+    if (rules.length === 0) return [];
+
+    const ctx = await this.importContext(partnerId, [
+      ...new Set(rules.map((r) => r.driverNameNorm)),
+    ]);
+    const cop = rules.map((rule) =>
+      presentCopRow(
+        rule,
+        computeInstallments(rule, ctx.days),
+        ctx.lastPlateByDriver.get(rule.driverNameNorm) ?? null,
+      ),
+    );
+    return filterCopRows(cop, query);
   }
 
   private async presentOne(partnerId: number, rule: InstallmentRule): Promise<InstallmentRuleDto> {

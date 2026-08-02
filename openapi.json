@@ -3402,6 +3402,164 @@
         ]
       }
     },
+    "/partner/portal/deposit-installments/cop": {
+      "get": {
+        "operationId": "DepositInstallmentsController_listCop",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 10,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "berjalan",
+                "lunas"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Substring on driver/plate",
+            "schema": {}
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "driverName",
+                "effectiveDate",
+                "createdAt",
+                "totalTarget",
+                "totalPaid",
+                "remaining",
+                "scheduleGap",
+                "withdrawalCount"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Car Ownership Program report: own COP-titled rules with programme figures",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/deposit-installments/cop/summary": {
+      "get": {
+        "operationId": "DepositInstallmentsController_copSummary",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "berjalan",
+                "lunas"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Substring on driver/plate",
+            "schema": {}
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "driverName",
+                "effectiveDate",
+                "createdAt",
+                "totalTarget",
+                "totalPaid",
+                "remaining",
+                "scheduleGap",
+                "withdrawalCount"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Car Ownership Program totals across every own COP rule the filter selects",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
     "/partner/portal/deposit-installments": {
       "get": {
         "operationId": "DepositInstallmentsController_list",
@@ -4750,7 +4908,7 @@
           "installmentCount": {
             "type": "number",
             "example": 20,
-            "description": "Durasi: jumlah cicilan (Nx)"
+            "description": "Durasi: jumlah cicilan harian (Nx). Program COP 60 bulan = 60 × 30 = 1800 cicilan."
           },
           "minDailySetoran": {
             "type": "number",
