@@ -3,10 +3,11 @@ import { partners } from './partners';
 
 /**
  * Plates a partner registers for itself ("Daftarkan Plat", legacy /partner/plates:
- * fields = nomor + Type). This is the ONLY source of truth for fleet scoping:
- * the Gojek/Grab grids a partner sees are filtered to its own normalized plates
- * here — never to anything the client sends — and the ADMIN Gojek fleet
- * monitoring is scoped to the union of every partner's registrations.
+ * fields = nomor + Type). This is the ONLY source of truth for PARTNER fleet
+ * scoping: the Gojek/Grab grids a partner sees are filtered to its own
+ * normalized plates here — never to anything the client sends. The ADMIN Gojek
+ * monitoring takes the union of every partner's registrations plus the admin's
+ * own registry (see admin-plates.ts), so admin rows can never widen a partner.
  */
 export const partnerPlates = pgTable(
   'partner_plates',

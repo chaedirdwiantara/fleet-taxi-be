@@ -14,12 +14,12 @@ import { GojekGridService } from './gojek-grid.service';
 import { buildPeriodSummary } from './range-summary';
 
 /**
- * Admin fleet monitoring, scoped to the union of every partner's registered
- * plates — the admin table shows exactly the plates partners registered via
- * Daftarkan Plat, and summary/performers derive from that same scoped grid so
- * they never count an unregistered plate. Mirrors PortalFleetService, which
- * does the per-partner version of this. No registered plates anywhere ⇒ empty
- * grid / Rp 0 (not an error).
+ * Admin fleet monitoring, scoped to the union of every partner's Daftarkan Plat
+ * registrations AND the admin console's own registry (Plate Registration) — see
+ * RegisteredPlatesService.unionScope. Summary/performers derive from that same
+ * scoped grid so they never count an unregistered plate. Mirrors
+ * PortalFleetService, which does the per-partner version of this. No registered
+ * plates anywhere ⇒ empty grid / Rp 0 (not an error).
  */
 @Injectable()
 export class AdminFleetService {

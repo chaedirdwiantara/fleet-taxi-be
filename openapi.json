@@ -490,6 +490,120 @@
         ]
       }
     },
+    "/admin/plates": {
+      "get": {
+        "operationId": "AdminPlatesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "List admin-registered plates, with the partner that claimed each (super_admin only)",
+        "tags": [
+          "admin-plates"
+        ]
+      },
+      "post": {
+        "operationId": "AdminPlatesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPlateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Register a plate (nomor + Type) for the admin console",
+        "tags": [
+          "admin-plates"
+        ]
+      }
+    },
+    "/admin/plates/{id}": {
+      "put": {
+        "operationId": "AdminPlatesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPlateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Edit one admin-registered plate (nomor + Type)",
+        "tags": [
+          "admin-plates"
+        ]
+      },
+      "delete": {
+        "operationId": "AdminPlatesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Remove one admin-registered plate",
+        "tags": [
+          "admin-plates"
+        ]
+      }
+    },
     "/admin/fleet/{platform}/imports": {
       "post": {
         "operationId": "ImportController_upload",
@@ -4407,6 +4521,24 @@
             "description": "Requests per minute"
           }
         }
+      },
+      "AdminPlateDto": {
+        "type": "object",
+        "properties": {
+          "plateNumber": {
+            "type": "string",
+            "example": "B 1793 SCP",
+            "description": "Nomor plat (as entered)"
+          },
+          "vehicleType": {
+            "type": "string",
+            "example": "Premium - BYD M6",
+            "description": "Type (jenis kendaraan)"
+          }
+        },
+        "required": [
+          "plateNumber"
+        ]
       },
       "EditDriverDto": {
         "type": "object",

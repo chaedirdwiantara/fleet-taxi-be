@@ -6,6 +6,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { ActivityLogInterceptor } from './activity-log/activity-log.interceptor';
 import { ActivityLogModule } from './activity-log/activity-log.module';
+import { AdminPlatesModule } from './admin-plates/admin-plates.module';
 import { AuthModule } from './auth/auth.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseEnvelopeInterceptor } from './common/interceptors/response-envelope.interceptor';
@@ -54,6 +55,7 @@ import { UsersModule } from './users/users.module';
     ActivityLogModule,
     AuthModule,
     PartnersModule,
+    AdminPlatesModule,
     RealtimeModule,
     ImportModule,
     FleetModule,
