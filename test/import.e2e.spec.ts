@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { DatabaseService } from '../src/db/database.service';
-import { fleetImportDetails, roles, userRoles, users } from '../src/db/schema';
+import { fleetImportDetails, fleetImports, roles, userRoles, users } from '../src/db/schema';
 
 const RUN = `imp${Date.now()}`;
 const ADMIN_EMAIL = `${RUN}@test.example`;
@@ -31,7 +31,10 @@ const GOJEK_CSV = [
   'not-a-date,D9,X,0,B 9999 XX,1,0,Deduction,REF-9',
 ].join('\n');
 
-async function until<T>(fn: () => Promise<T | null>, timeoutMs = 20_000): Promise<T> {
+// Headroom under the 60s test timeout: this waits on a real BullMQ worker, and
+// on CI ~30 spec files each boot their own Nest app + worker against one Redis,
+// so 20s was tight enough to fail intermittently on a loaded runner.
+async function until<T>(fn: () => Promise<T | null>, timeoutMs = 45_000): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const v = await fn();
@@ -75,6 +78,10 @@ describe('import pipeline (M2 deliverable)', () => {
   }, 30_000);
 
   afterAll(async () => {
+    // Drop this run's imports FIRST: fleet_imports.imported_by references the
+    // admin, so if the test above bailed before its rollback step the user
+    // delete would fail on that FK and bury the real failure.
+    await database.db.delete(fleetImports).where(eq(fleetImports.periodYear, YEAR));
     await database.db.delete(users).where(inArray(users.id, [adminId]));
     await app.close();
   });
