@@ -1,0 +1,1 @@
+ALTER TABLE "admin_plates" ADD COLUMN "partner_name" text;

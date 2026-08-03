@@ -22,6 +22,11 @@ export const adminPlates = pgTable(
     plateNumber: text('plate_number').notNull(), // display, as entered (e.g. "B 1793 SCP")
     plateNumberNorm: text('plate_number_norm').notNull(), // normalized [A-Z0-9], scoping/uniqueness key
     vehicleType: text('vehicle_type'), // legacy "Type", free text (e.g. "Premium - BYD M6")
+    // Partner label the admin types in. Free text on purpose: an admin often
+    // registers a plate before (or without) the operator ever having a portal
+    // account, so this cannot be an FK. When empty, the read model falls back to
+    // the partner that registered the same plate in its own portal.
+    partnerName: text('partner_name'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
