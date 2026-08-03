@@ -4534,6 +4534,11 @@
             "type": "string",
             "example": "Premium - BYD M6",
             "description": "Type (jenis kendaraan)"
+          },
+          "partnerName": {
+            "type": "string",
+            "example": "Bhisa Shuttle",
+            "description": "Nama partner, teks bebas. Kosongkan untuk memakai partner yang mendaftarkan plat yang sama di portalnya."
           }
         },
         "required": [

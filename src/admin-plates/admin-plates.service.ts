@@ -16,12 +16,15 @@ export interface AdminPlate {
   plateNumber: string;
   plateNumberNorm: string;
   vehicleType: string | null;
+  /** Free-text partner label the admin typed on this registration. */
+  partnerName: string | null;
   /**
    * Active partner that registered the SAME plate in its own portal, or null
-   * when nobody claimed it. Read-only context for the admin — it is resolved
-   * from partner_plates, never stored here.
+   * when nobody claimed it. Never stored — resolved from partner_plates on
+   * every read, so it stays correct when a plate changes hands. The UI shows it
+   * only where partnerName is empty.
    */
-  partnerName: string | null;
+  registeredPartnerName: string | null;
 }
 
 /**
@@ -69,12 +72,13 @@ export class AdminPlatesService {
         plateNumber: dto.plateNumber.trim(),
         plateNumberNorm: norm,
         vehicleType: dto.vehicleType?.trim() || null,
+        partnerName: dto.partnerName?.trim() || null,
       })
       .onConflictDoNothing({ target: adminPlates.plateNumberNorm })
       .returning();
 
     if (!row) throw new ConflictException('Plat sudah terdaftar');
-    return this.present(row, await this.partnerNameOf(norm));
+    return this.present(row, await this.registeredPartnerNameOf(norm));
   }
 
   async update(id: number, dto: AdminPlateDto): Promise<AdminPlate> {
@@ -101,12 +105,13 @@ export class AdminPlatesService {
         plateNumber: dto.plateNumber.trim(),
         plateNumberNorm: norm,
         vehicleType: dto.vehicleType?.trim() || null,
+        partnerName: dto.partnerName?.trim() || null,
         updatedAt: new Date(),
       })
       .where(eq(adminPlates.id, id))
       .returning();
 
-    return this.present(row!, await this.partnerNameOf(norm));
+    return this.present(row!, await this.registeredPartnerNameOf(norm));
   }
 
   async remove(id: number): Promise<{ deleted: true }> {
@@ -124,21 +129,29 @@ export class AdminPlatesService {
     return norm;
   }
 
-  private async partnerNameOf(norm: string): Promise<string | null> {
+  /** Partner that registered this norm in its own portal, if any. */
+  private async registeredPartnerNameOf(norm: string): Promise<string | null> {
     const names = await fetchRegisteredPartnerNames(this.database, [norm]);
     return names.get(norm) ?? null;
   }
 
   private present(
-    row: { id: number; plateNumber: string; plateNumberNorm: string; vehicleType: string | null },
-    partnerName: string | null,
+    row: {
+      id: number;
+      plateNumber: string;
+      plateNumberNorm: string;
+      vehicleType: string | null;
+      partnerName: string | null;
+    },
+    registeredPartnerName: string | null,
   ): AdminPlate {
     return {
       id: row.id,
       plateNumber: row.plateNumber,
       plateNumberNorm: row.plateNumberNorm,
       vehicleType: row.vehicleType,
-      partnerName,
+      partnerName: row.partnerName,
+      registeredPartnerName,
     };
   }
 }

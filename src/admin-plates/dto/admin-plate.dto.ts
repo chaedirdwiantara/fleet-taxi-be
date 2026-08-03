@@ -14,4 +14,14 @@ export class AdminPlateDto {
   @IsString()
   @MaxLength(100)
   vehicleType?: string;
+
+  @ApiPropertyOptional({
+    example: 'Bhisa Shuttle',
+    description:
+      'Nama partner, teks bebas. Kosongkan untuk memakai partner yang mendaftarkan plat yang sama di portalnya.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  partnerName?: string;
 }

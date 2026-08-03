@@ -38,6 +38,7 @@ const PARTNER_NAME = 'Partner Plate Registry';
 const PLATE_PARTNER = `${RUN}A`.toUpperCase(); // registered by the partner
 const PLATE_ORPHAN = `${RUN}B`.toUpperCase(); // registered by the admin only
 const PLATE_LATE = `${RUN}C`.toUpperCase(); // registered by nobody until the last test
+const PLATE_TYPED = `${RUN}D`.toUpperCase(); // carries an admin-typed partner name
 const ADMIN_TYPE = 'Premium - Admin Entry';
 
 // A period of its own, and deliberately NOT the newest one in the table: the
@@ -158,7 +159,14 @@ describe('admin plate registration (/admin/plates)', () => {
     const { db } = database;
     await db
       .delete(adminPlates)
-      .where(inArray(adminPlates.plateNumberNorm, [PLATE_PARTNER, PLATE_ORPHAN, PLATE_LATE]));
+      .where(
+        inArray(adminPlates.plateNumberNorm, [
+          PLATE_PARTNER,
+          PLATE_ORPHAN,
+          PLATE_LATE,
+          PLATE_TYPED,
+        ]),
+      );
     await db.delete(fleetImports).where(eq(fleetImports.periodYear, YEAR));
     await dropDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
     await db.delete(users).where(inArray(users.id, userIds));
@@ -186,7 +194,13 @@ describe('admin plate registration (/admin/plates)', () => {
       .expect(201);
     expect(created.body).toMatchObject({
       success: true,
-      data: { plateNumberNorm: PLATE_ORPHAN, vehicleType: ADMIN_TYPE, partnerName: null },
+      data: {
+        plateNumberNorm: PLATE_ORPHAN,
+        vehicleType: ADMIN_TYPE,
+        // nothing typed and no partner claims this plate
+        partnerName: null,
+        registeredPartnerName: null,
+      },
     });
 
     await superAgent.post('/admin/plates').send({ plateNumber: '   ' }).expect(400);
@@ -195,15 +209,43 @@ describe('admin plate registration (/admin/plates)', () => {
     expect(dupe.body.error.code).toBe('CONFLICT');
   });
 
-  it('lists registrations with the partner that registered the same plate', async () => {
+  it('keeps the typed partner name and the claiming partner as separate fields', async () => {
     await superAgent.post('/admin/plates').send({ plateNumber: PLATE_PARTNER }).expect(201);
 
     const res = await superAgent.get('/admin/plates').expect(200);
-    const rows = res.body.data as { plateNumberNorm: string; partnerName: string | null }[];
-    const byNorm = new Map(rows.map((r) => [r.plateNumberNorm, r]));
-    // claimed in a partner portal → the partner's name; admin-only → null
-    expect(byNorm.get(PLATE_PARTNER)!.partnerName).toBe(PARTNER_NAME);
+    type Row = {
+      plateNumberNorm: string;
+      partnerName: string | null;
+      registeredPartnerName: string | null;
+    };
+    const byNorm = new Map((res.body.data as Row[]).map((r) => [r.plateNumberNorm, r]));
+
+    // neither registration typed a name, so both partnerName stay null…
+    expect(byNorm.get(PLATE_PARTNER)!.partnerName).toBeNull();
     expect(byNorm.get(PLATE_ORPHAN)!.partnerName).toBeNull();
+    // …while the claiming partner is resolved live, per plate
+    expect(byNorm.get(PLATE_PARTNER)!.registeredPartnerName).toBe(PARTNER_NAME);
+    expect(byNorm.get(PLATE_ORPHAN)!.registeredPartnerName).toBeNull();
+  });
+
+  it('stores a typed partner name without touching the resolved one', async () => {
+    const typed = 'CV Armada Mandiri';
+    const created = await superAgent
+      .post('/admin/plates')
+      .send({ plateNumber: PLATE_TYPED, partnerName: `  ${typed}  ` })
+      .expect(201);
+    // trimmed, stored as entered, and independent of any partner registration
+    expect(created.body.data).toMatchObject({
+      partnerName: typed,
+      registeredPartnerName: null,
+    });
+
+    // a blank string clears it back to null rather than storing ''
+    const cleared = await superAgent
+      .put(`/admin/plates/${created.body.data.id}`)
+      .send({ plateNumber: PLATE_TYPED, partnerName: '   ' })
+      .expect(200);
+    expect(cleared.body.data.partnerName).toBeNull();
   });
 
   it('edits and deletes one registration, 404 on an unknown id', async () => {
