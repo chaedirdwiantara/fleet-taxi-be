@@ -21,6 +21,9 @@ export type SubjectName =
   // Only super_admin's blanket `manage all` grants this — the audit log is
   // deliberately invisible to plain admins.
   | 'ActivityLog'
+  // Same deal: the admin plate registry decides which vehicles the whole admin
+  // console can see, so it stays out of FLEET_SUBJECTS (super_admin only).
+  | 'PlateRegistry'
   | 'all';
 
 export type AppAbility = MongoAbility<[Action, SubjectName | Record<string, unknown>]>;
