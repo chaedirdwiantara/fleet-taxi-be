@@ -40,6 +40,7 @@ const PLATE_ORPHAN = `${RUN}B`.toUpperCase(); // registered by the admin only
 const PLATE_LATE = `${RUN}C`.toUpperCase(); // registered by nobody until the last test
 const PLATE_TYPED = `${RUN}D`.toUpperCase(); // carries an admin-typed partner name
 const ADMIN_TYPE = 'Premium - Admin Entry';
+const ADMIN_PARTNER = 'Avanza BBG Dedicated';
 
 // A period of its own, and deliberately NOT the newest one in the table: the
 // "driver keluar" split compares each row's last transaction against the
@@ -292,7 +293,7 @@ describe('admin plate registration (/admin/plates)', () => {
 
     await superAgent
       .post('/admin/plates')
-      .send({ plateNumber: PLATE_LATE, vehicleType: ADMIN_TYPE })
+      .send({ plateNumber: PLATE_LATE, vehicleType: ADMIN_TYPE, partnerName: ADMIN_PARTNER })
       .expect(201);
 
     const res = await superAgent
@@ -304,13 +305,25 @@ describe('admin plate registration (/admin/plates)', () => {
     expect(row).toBeDefined();
     // the Type typed in Plate Registration fills the row no fleet target set…
     expect(row!.vehicleType).toBe(ADMIN_TYPE);
-    // …but an admin registration carries no partner, so the Rental Partner
-    // label keeps its existing "no partner" fallback
-    expect(row!.rentalPartner).toBe('');
+    // …and so does the Nama Partner typed next to it
+    expect(row!.rentalPartner).toBe(ADMIN_PARTNER);
 
     // and it still is not the partner's business
     expect(await gridNorms(partnerAgent, '/partner/portal/fleet/gojek/grid')).not.toContain(
       PLATE_LATE,
     );
+  });
+
+  it('leaves the Rental Partner label alone when the admin typed no name', async () => {
+    // PLATE_ORPHAN was registered without a Nama Partner and no partner claims
+    // it, so the grid keeps its existing "no partner" fallback.
+    const res = await superAgent
+      .get(`/admin/fleet/gojek/grid?month=${MONTH}&year=${YEAR}`)
+      .expect(200);
+    const row = (res.body.data.rows as { plateNorm: string; rentalPartner: string }[]).find(
+      (r) => r.plateNorm === PLATE_ORPHAN,
+    );
+    expect(row).toBeDefined();
+    expect(row!.rentalPartner).toBe('');
   });
 });

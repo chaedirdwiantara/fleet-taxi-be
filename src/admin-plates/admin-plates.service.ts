@@ -52,17 +52,6 @@ export class AdminPlatesService {
     return rows.map((r) => this.present(r, partnerNames.get(r.plateNumberNorm) ?? null));
   }
 
-  /** Normalized plates + norm → Type, for the admin fleet scope. */
-  async registered(): Promise<{ norms: string[]; typeByNorm: Map<string, string> }> {
-    const rows = await this.database.db
-      .select({ norm: adminPlates.plateNumberNorm, vehicleType: adminPlates.vehicleType })
-      .from(adminPlates);
-
-    const typeByNorm = new Map<string, string>();
-    for (const row of rows) if (row.vehicleType) typeByNorm.set(row.norm, row.vehicleType);
-    return { norms: rows.map((r) => r.norm), typeByNorm };
-  }
-
   async create(dto: AdminPlateDto): Promise<AdminPlate> {
     const norm = this.requireNorm(dto);
 
