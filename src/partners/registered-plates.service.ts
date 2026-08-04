@@ -24,11 +24,11 @@ export class RegisteredPlatesService {
    * Two partners may register the same plate (e.g. a fleet handed over to a new
    * partner while the old account lingers); the LATEST registration wins in both
    * maps, so re-registering a plate transfers its Rental Partner label
-   * immediately and deterministically. An admin registration then overrides the
-   * Type on top of that — it is the admin's own entry, typed in the admin console
-   * — while the partner-name map stays partner-only: a plate only the admin
-   * registered has no partner, so its Rental Partner label keeps falling back to
-   * the legacy fleet_targets.rental_partner text.
+   * immediately and deterministically. An admin registration then overrides both
+   * on top of that — they are the admin's own entries, typed in the admin
+   * console. A plate whose admin registration names no partner keeps whatever
+   * the partner registration said, and failing that the legacy
+   * fleet_targets.rental_partner text.
    */
   async unionScope(): Promise<{
     norms: string[];
@@ -46,7 +46,11 @@ export class RegisteredPlatesService {
         .innerJoin(partners, eq(partners.id, partnerPlates.partnerId))
         .orderBy(asc(partnerPlates.id)),
       this.database.db
-        .select({ norm: adminPlates.plateNumberNorm, vehicleType: adminPlates.vehicleType })
+        .select({
+          norm: adminPlates.plateNumberNorm,
+          vehicleType: adminPlates.vehicleType,
+          partnerName: adminPlates.partnerName,
+        })
         .from(adminPlates)
         .orderBy(asc(adminPlates.id)),
     ]);
@@ -63,6 +67,7 @@ export class RegisteredPlatesService {
     for (const row of adminRows) {
       norms.add(row.norm);
       if (row.vehicleType) typeByNorm.set(row.norm, row.vehicleType);
+      if (row.partnerName) partnerNameByNorm.set(row.norm, row.partnerName);
     }
     return { norms: [...norms], typeByNorm, partnerNameByNorm };
   }
