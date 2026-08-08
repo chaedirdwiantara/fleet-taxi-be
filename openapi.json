@@ -2417,6 +2417,45 @@
         ]
       }
     },
+    "/partner/portal/fleet/rental/grid": {
+      "get": {
+        "operationId": "PortalFleetController_rentalGrid",
+        "parameters": [
+          {
+            "name": "month",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 7,
+              "type": "number"
+            }
+          },
+          {
+            "name": "year",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": 2026,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Own Rental 31-day pivot — omset per plate per day, with payment status",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
     "/partner/portal/checkpoints": {
       "get": {
         "operationId": "PortalCheckpointsController_list",

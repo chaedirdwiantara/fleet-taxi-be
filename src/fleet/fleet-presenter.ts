@@ -37,14 +37,24 @@ export interface CellBreakdownDto {
   items: CellBreakdownItemDto[];
 }
 
-export interface DayCellValueDto {
-  day: number;
+/**
+ * Everything the cell's COLOUR is derived from — the legacy spreadsheet legend
+ * (hijau sesuai target · kuning kurang · merah Rp0 · ungu manual · oranye
+ * gabungan · biru bebas setoran · abu tidak beroperasi). Split out of
+ * {@link DayCellValueDto} so All Fleet Monitoring can carry the very same facts
+ * and reach the very same verdict without re-implementing the rules.
+ */
+export interface DayFactsDto {
   displayAmount: number;
   countedAmount: number;
   isManualPayment?: boolean;
   hasDisplayOnlyManualPayment?: boolean;
   isMixed?: boolean;
   exception?: { isBebasSetoran: boolean; keterangan: string | null } | null;
+}
+
+export interface DayCellValueDto extends DayFactsDto {
+  day: number;
   detail?: CellBreakdownDto | null;
 }
 
@@ -221,7 +231,12 @@ export function toCellBreakdown(
 // type like "Manual adjustment deduction" must not count as manual).
 const MANUAL_LABELS = new Set(['Manual Payment', 'Manual Payment (Tidak Masuk Setoran)']);
 
-function dayCell(row: GojekVehicleRow, day: number): DayCellValueDto {
+/**
+ * The colour-bearing facts of one day. Exported because All Fleet Monitoring
+ * feeds them into the SAME client-side tone function as this grid does — one
+ * rule, two screens, no chance of the two legends drifting apart.
+ */
+export function gojekDayFacts(row: GojekVehicleRow, day: number): DayFactsDto {
   const bucket = row.dailyDetails[day];
   const exc = row.exceptions[day];
   // Mixed = a real manual payment AND a (non-manual) deduction on the same day.
@@ -231,7 +246,6 @@ function dayCell(row: GojekVehicleRow, day: number): DayCellValueDto {
     !!bucket &&
     bucket.items.some((i) => !MANUAL_LABELS.has(i.label));
   return {
-    day,
     displayAmount: row.dailyData[day] ?? 0,
     countedAmount: row.dailyCountedData[day] ?? 0,
     ...(row.manualPaymentDays.includes(day) ? { isManualPayment: true } : {}),
@@ -240,17 +254,31 @@ function dayCell(row: GojekVehicleRow, day: number): DayCellValueDto {
       : {}),
     ...(isMixed ? { isMixed: true } : {}),
     exception: exc ? { isBebasSetoran: exc.isBebasSetoran, keterangan: exc.keterangan } : null,
+  };
+}
+
+/** Every day the grid has something to say about: money, or an exception. */
+export function gojekActiveDays(row: GojekVehicleRow): number[] {
+  return [
+    ...new Set<number>([
+      ...Object.keys(row.dailyData).map(Number),
+      ...Object.keys(row.exceptions).map(Number),
+    ]),
+  ];
+}
+
+function dayCell(row: GojekVehicleRow, day: number): DayCellValueDto {
+  const bucket = row.dailyDetails[day];
+  return {
+    day,
+    ...gojekDayFacts(row, day),
     detail: bucket ? toCellBreakdown(bucket, row.key, day) : null,
   };
 }
 
 function toFleetRow(row: GojekVehicleRow): FleetRowDto {
   const days: Record<number, DayCellValueDto> = {};
-  const activeDays = new Set<number>([
-    ...Object.keys(row.dailyData).map(Number),
-    ...Object.keys(row.exceptions).map(Number),
-  ]);
-  for (const day of activeDays) days[day] = dayCell(row, day);
+  for (const day of gojekActiveDays(row)) days[day] = dayCell(row, day);
 
   return {
     plateNorm: row.key,

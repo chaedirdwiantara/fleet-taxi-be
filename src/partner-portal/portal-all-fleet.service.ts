@@ -4,10 +4,16 @@ import {
   driverRowKey,
   type MonitoringMode,
 } from '../common/util/monitoring-mode';
+import { gojekActiveDays, gojekDayFacts } from '../fleet/fleet-presenter';
 import { GojekGridService } from '../fleet/gojek-grid.service';
+import type { GojekVehicleRow } from '../fleet/gojek-grid.types';
 import { GrabGridService } from '../grab/grab-grid.service';
 import { PartnerRentalsService } from '../partner-rentals/partner-rentals.service';
-import { buildAllFleetMatrix, type AllFleetInputRow } from './all-fleet-matrix';
+import {
+  buildAllFleetMatrix,
+  type AllFleetGojekDay,
+  type AllFleetInputRow,
+} from './all-fleet-matrix';
 import {
   toAllFleetGrid,
   type AllFleetCellDto,
@@ -68,6 +74,7 @@ export class PortalAllFleetService {
         sublabel: byDriver ? null : row.vehicleType || typeByNorm.get(row.vehicle) || null,
         days,
         zeroDays,
+        gojekDays: gojekDayStatuses(row),
         history: byDriver
           ? row.plateHistory.map((plate) => ({ label: plate }))
           : row.driverHistory.map((driver) => ({ label: driver })),
@@ -211,6 +218,23 @@ export class PortalAllFleetService {
       sources,
     };
   }
+}
+
+/**
+ * Gojek's per-day verdict for one row, keyed by day-of-month — the same facts
+ * `fleet-presenter` hands the Gojek grid, plus that day's target baseline, so
+ * All Fleet can colour its figures with the identical legend. Money is NOT
+ * taken from here; it still comes from `dailyCountedData` above.
+ */
+function gojekDayStatuses(row: GojekVehicleRow): Record<number, AllFleetGojekDay> {
+  const statuses: Record<number, AllFleetGojekDay> = {};
+  for (const day of gojekActiveDays(row)) {
+    statuses[day] = {
+      ...gojekDayFacts(row, day),
+      dailyTarget: row.dailyDue[day] ?? row.dailyTarget,
+    };
+  }
+  return statuses;
 }
 
 /**

@@ -64,6 +64,7 @@ const EXPECTED_OPERATIONS = [
   'GET /partner/portal/fleet/grab/cell',
   'GET /partner/portal/fleet/grab/grid',
   'GET /partner/portal/fleet/grab/summary',
+  'GET /partner/portal/fleet/rental/grid',
   'GET /partner/portal/me',
   'GET /partner/portal/orders',
   'GET /partner/portal/orders/export',

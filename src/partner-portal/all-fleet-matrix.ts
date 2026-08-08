@@ -17,12 +17,25 @@
  * driver) plus import rows with an empty driver name.
  */
 import type { MonitoringMode } from '../common/util/monitoring-mode';
+import type { DayFactsDto } from '../fleet/fleet-presenter';
 import type { RentalDailyIncomeDto } from '../partner-rentals/rental-presenter';
 
 export const ALL_FLEET_SOURCES = ['gojek', 'grab', 'rental'] as const;
 export type AllFleetSource = (typeof ALL_FLEET_SOURCES)[number];
 
 export type SourceAmounts = Record<AllFleetSource, number>;
+
+/**
+ * Gojek's own verdict on the day, carried verbatim so the combined matrix can
+ * wear the same status colours as Gojek Monitoring (sesuai/kurang dari target,
+ * Manual Payment, gabungan, bebas setoran, tidak beroperasi). PRESENTATION
+ * ONLY — the money of the cell stays `gojek`/`total` above; nothing here is
+ * ever summed.
+ */
+export interface AllFleetGojekDay extends DayFactsDto {
+  /** That day's own due baseline (mid-month target changes), else the row's. */
+  dailyTarget: number;
+}
 
 export interface AllFleetDayCell {
   gojek: number;
@@ -31,6 +44,9 @@ export interface AllFleetDayCell {
   total: number;
   /** The subject appears in that day's data but earned Rp 0 (pink cell). */
   isZero: boolean;
+  /** Present when the Gojek grid had something for that day — money, a manual
+   * payment, or an exception. Absent for Grab/Rental-only days (no target). */
+  gojekDay?: AllFleetGojekDay;
 }
 
 /** One entry of the mirror-image history column: drivers of a plate, or plates
@@ -81,6 +97,11 @@ export interface AllFleetInputRow {
   /** Days present in the source data that earned Rp 0 — lets the matrix tell
    * "no data" apart from "data, but nothing earned" (the pink cell). */
   zeroDays?: number[];
+  /** Gojek only: that source's per-day status facts. Days listed here get a
+   * cell even when they carry no money (a bebas-setoran day, or a Manual
+   * Payment that does not count toward setoran) — otherwise the combined view
+   * would silently hide what Gojek Monitoring shows in blue or purple. */
+  gojekDays?: Record<number, AllFleetGojekDay>;
   /** The mirror subject: the drivers of this plate, or the plates of this driver. */
   history?: { label: string; sublabel?: string | null }[];
 }
@@ -138,6 +159,25 @@ function markZeroDays(row: Draft, zeroDays: number[], daysInMonth: number): void
     if (day < 1 || day > daysInMonth) continue;
     const cell = (row.days[day] ??= emptyCell());
     if (cell.total === 0) cell.isZero = true;
+  }
+}
+
+/**
+ * Attach Gojek's per-day status to the subject's cells, CREATING a cell for a
+ * day that carries no money (bebas setoran, tidak beroperasi, or a Manual
+ * Payment that does not count toward setoran). Deliberately touches no amount:
+ * `add()` is the only place money accrues, so every total is unchanged.
+ */
+function attachGojekDays(
+  row: Draft,
+  gojekDays: Record<number, AllFleetGojekDay>,
+  daysInMonth: number,
+): void {
+  for (const [dayKey, facts] of Object.entries(gojekDays)) {
+    const day = Number(dayKey);
+    if (day < 1 || day > daysInMonth) continue;
+    const cell = (row.days[day] ??= emptyCell());
+    cell.gojekDay = facts;
   }
 }
 
@@ -208,6 +248,11 @@ export function buildAllFleetMatrix(input: BuildAllFleetInput): AllFleetMatrix {
       const row = target(subject.key, subject.label, subject.sublabel ?? null);
       add(row, source, subject.days, daysInMonth);
       markZeroDays(row, subject.zeroDays ?? [], daysInMonth);
+      // Only a real subject has a target to be measured against; the residual
+      // row pools many of them, so a per-day verdict there would be a fiction.
+      if (subject.gojekDays && row !== residual) {
+        attachGojekDays(row, subject.gojekDays, daysInMonth);
+      }
       for (const entry of subject.history ?? []) {
         trackHistory(row, entry.label, entry.sublabel ?? null, subject.days, daysInMonth);
       }

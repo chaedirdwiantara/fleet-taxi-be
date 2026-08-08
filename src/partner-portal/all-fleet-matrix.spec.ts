@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAllFleetMatrix,
+  type AllFleetGojekDay,
   type AllFleetInputRow,
   type BuildAllFleetInput,
 } from './all-fleet-matrix';
@@ -149,6 +150,96 @@ describe('buildAllFleetMatrix — plate mode', () => {
 
   it('has no residual row when everything is attributable', () => {
     expect(buildAllFleetMatrix(input({ gojek: [gojek()] })).residual).toBeNull();
+  });
+});
+
+describe('buildAllFleetMatrix — Gojek per-day status', () => {
+  const facts = (over: Partial<AllFleetGojekDay> = {}): AllFleetGojekDay => ({
+    displayAmount: 400_000,
+    countedAmount: 400_000,
+    dailyTarget: 388_000,
+    exception: null,
+    ...over,
+  });
+
+  it('carries the Gojek verdict onto the day it belongs to', () => {
+    const matrix = buildAllFleetMatrix(
+      input({
+        gojek: [gojek({ gojekDays: { 1: facts(), 2: facts({ countedAmount: 500_000 }) } })],
+      }),
+    );
+
+    expect(matrix.rows[0].days[1].gojekDay).toMatchObject({ countedAmount: 400_000 });
+    expect(matrix.rows[0].days[2].gojekDay?.dailyTarget).toBe(388_000);
+  });
+
+  it('opens a cell for a day that has status but no money (bebas setoran)', () => {
+    const matrix = buildAllFleetMatrix(
+      input({
+        gojek: [
+          gojek({
+            days: {},
+            gojekDays: {
+              9: facts({
+                displayAmount: 0,
+                countedAmount: 0,
+                exception: { isBebasSetoran: true, keterangan: 'Disewa' },
+              }),
+            },
+          }),
+        ],
+      }),
+    );
+
+    expect(matrix.rows[0].days[9]).toMatchObject({ total: 0, isZero: false });
+    expect(matrix.rows[0].days[9].gojekDay?.exception?.isBebasSetoran).toBe(true);
+  });
+
+  it('adds not a single rupiah anywhere — status is presentation, never money', () => {
+    const withStatus = buildAllFleetMatrix(
+      input({
+        gojek: [
+          gojek({
+            gojekDays: {
+              1: facts(),
+              // a display-only Manual Payment and an exception day: both carry a
+              // display amount the matrix must keep ignoring
+              5: facts({
+                displayAmount: 300_000,
+                countedAmount: 0,
+                hasDisplayOnlyManualPayment: true,
+              }),
+              9: facts({
+                displayAmount: 0,
+                countedAmount: 0,
+                exception: { isBebasSetoran: true, keterangan: null },
+              }),
+            },
+          }),
+        ],
+        grab: [grab()],
+        rental: [rental()],
+      }),
+    );
+    const without = buildAllFleetMatrix(
+      input({ gojek: [gojek()], grab: [grab()], rental: [rental()] }),
+    );
+
+    expect(withStatus.totals).toEqual(without.totals);
+    expect(withStatus.rows[0].totals).toEqual(without.rows[0].totals);
+    expect(withStatus.dailyTotals[1]).toMatchObject(without.dailyTotals[1]);
+    expect(withStatus.dailyTotals[5]).toMatchObject({ gojek: 0, total: 0 });
+  });
+
+  it('leaves the residual row without a verdict — it pools many subjects', () => {
+    const matrix = buildAllFleetMatrix(
+      input({
+        gojek: [gojek({ key: '', label: '', days: { 1: 250_000 }, gojekDays: { 1: facts() } })],
+      }),
+    );
+
+    expect(matrix.residual?.days[1].total).toBe(250_000);
+    expect(matrix.residual?.days[1].gojekDay).toBeUndefined();
   });
 });
 
