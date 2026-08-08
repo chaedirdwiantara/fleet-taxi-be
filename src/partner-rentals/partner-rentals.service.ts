@@ -114,8 +114,21 @@ export class PartnerRentalsService {
     month: number,
     year: number,
   ): Promise<RentalDailyIncomeDto[]> {
+    return rentalDailyIncome(await this.monthBookings(partnerId, month, year), { year, month });
+  }
+
+  /**
+   * The partner's raw bookings overlapping a WIB month — the one query behind
+   * every month-scoped rental view (recap, All Fleet omset, Rental Monitoring
+   * pivot), so they can never disagree about which rentals belong to a month.
+   */
+  async monthBookings(
+    partnerId: number,
+    month: number,
+    year: number,
+  ): Promise<(typeof rentals.$inferSelect)[]> {
     const { start, end } = monthBounds(year, month);
-    const rows = await this.database.db
+    return this.database.db
       .select()
       .from(rentals)
       .where(
@@ -125,7 +138,6 @@ export class PartnerRentalsService {
           gte(rentals.endDate, start),
         ),
       );
-    return rentalDailyIncome(rows, { year, month });
   }
 
   /**

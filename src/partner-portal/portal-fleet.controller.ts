@@ -26,6 +26,7 @@ import { DATE_RANGE_DOC, parseDateRange, parsePeriod, toStringArray } from '../c
 import { CreateExceptionDto } from '../fleet/dto/fleet.dto';
 import { PortalAllFleetService } from './portal-all-fleet.service';
 import { PortalFleetService } from './portal-fleet.service';
+import { PortalRentalGridService } from './portal-rental-grid.service';
 import { requirePartner } from './portal.util';
 
 /** Day-of-month query param, validated once for every cell endpoint. */
@@ -56,6 +57,7 @@ export class PortalFleetController {
   constructor(
     private readonly fleet: PortalFleetService,
     private readonly allFleet: PortalAllFleetService,
+    private readonly rentalGridService: PortalRentalGridService,
   ) {}
 
   @Get('all/grid')
@@ -325,5 +327,21 @@ export class PortalFleetController {
     );
     if (!detail) throw new NotFoundException('No data for that key');
     return detail;
+  }
+
+  @Get('rental/grid')
+  @ApiOperation({
+    summary: 'Own Rental 31-day pivot — omset per plate per day, with payment status',
+  })
+  @ApiQuery({ name: 'month', type: Number, example: 7 })
+  @ApiQuery({ name: 'year', type: Number, example: 2026 })
+  rentalGrid(
+    @CurrentUser() user: SessionUser,
+    @Query('month') month: string,
+    @Query('year') year: string,
+  ) {
+    const partnerId = requirePartner(user);
+    const period = parsePeriod(month, year);
+    return this.rentalGridService.grid(partnerId, period.month, period.year);
   }
 }

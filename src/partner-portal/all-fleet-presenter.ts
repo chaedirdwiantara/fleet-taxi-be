@@ -4,7 +4,12 @@
  * file just names them for the client.
  */
 import type { MonitoringMode } from '../common/util/monitoring-mode';
-import type { AllFleetMatrix, AllFleetRow, AllFleetSource } from './all-fleet-matrix';
+import type {
+  AllFleetGojekDay,
+  AllFleetMatrix,
+  AllFleetRow,
+  AllFleetSource,
+} from './all-fleet-matrix';
 
 export interface AllFleetDayCellDto {
   gojek: number;
@@ -13,6 +18,14 @@ export interface AllFleetDayCellDto {
   total: number;
   /** Subject appears in that day's data but earned Rp 0 (distinct from "no data"). */
   isZero: boolean;
+  /**
+   * Gojek's own facts for that day (amounts, target, manual/exception flags),
+   * so the client can colour the figure with the exact Gojek Monitoring legend
+   * instead of re-deriving one. PRESENTATION ONLY — never summed; the money of
+   * the cell is `gojek`/`total`. Absent on Grab/Rental-only days, which have no
+   * daily target to be measured against.
+   */
+  gojekDay?: AllFleetGojekDay;
 }
 
 export interface AllFleetHistoryEntryDto {

@@ -16,6 +16,7 @@ import { PortalFleetService } from './portal-fleet.service';
 import { PortalOrdersService } from './portal-orders.service';
 import { PortalPlatesController } from './portal-plates.controller';
 import { PortalPlatesService } from './portal-plates.service';
+import { PortalRentalGridService } from './portal-rental-grid.service';
 
 @Module({
   // PartnerRentalsModule: Rental omset is the third source of All Fleet
@@ -35,6 +36,7 @@ import { PortalPlatesService } from './portal-plates.service';
     PortalPlatesService,
     PortalFleetService,
     PortalAllFleetService,
+    PortalRentalGridService,
     PortalCheckpointsService,
     CheckpointPdfService,
   ],
