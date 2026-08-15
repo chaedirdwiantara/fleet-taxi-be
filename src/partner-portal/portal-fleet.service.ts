@@ -59,6 +59,11 @@ export class PortalFleetService {
       // fleet target typed, inside the grid — so the Type column, the plate
       // options and the ?vehicleType= filter all read the same value.
       vehicleTypeByNorm: typeMap,
+      // Outstanding Total spans the plate's whole history, so the partner gets
+      // the same audit trail behind it as the admin. Nothing extra leaks: the
+      // breakdown is folded from the scoped row set, so a driver row lists only
+      // this partner's plates, and a plate row only the drivers who drove it.
+      includeOutstandingBreakdown: true,
     });
     return toFleetGrid(result);
   }
