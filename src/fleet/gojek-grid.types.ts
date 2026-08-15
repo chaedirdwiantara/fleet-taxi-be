@@ -25,6 +25,7 @@ export interface ExceptionInfo {
 import type { MonitoringMode } from '../common/util/monitoring-mode';
 import type { DayWindow } from '../common/util/period';
 import type { DueSegment } from './due-segments';
+import type { OutstandingBreakdown } from './outstanding-breakdown';
 
 export interface GojekVehicleRow {
   // Row identity: a normalized plate, or `drv:<NORMALIZED NAME>` when the grid
@@ -79,6 +80,10 @@ export interface GojekVehicleRow {
   // The selected month's own delta: outstanding === previous-month outstanding
   // + outstandingMonth by construction.
   outstandingMonth: number;
+  // Why `outstanding` is what it is — who contributed and which months moved it
+  // (see outstanding-breakdown.ts). Present only when buildGrid was asked for it
+  // (`includeOutstandingBreakdown`); its `total` equals `outstanding`.
+  outstandingBreakdown?: OutstandingBreakdown;
   // Set only when buildGrid ran with a Tanggal day window. Two slices of the
   // very same SQL aggregate (identical exclusions to month_*):
   //  • *ToDay  — day 1 .. window end, the balance as it stood at that date;

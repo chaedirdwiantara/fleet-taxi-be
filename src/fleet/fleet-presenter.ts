@@ -97,6 +97,10 @@ export interface FleetRowDto {
     outstanding: number;
     outstandingMonth: number;
   };
+  // "Rincian Outstanding": the audit trail behind `summary.outstanding` — which
+  // driver/plate contributed it and which months moved it. Optional because only
+  // the monitoring grid asks the service to compute it.
+  outstandingBreakdown?: OutstandingBreakdownDto;
   driverHistory: string[];
   // Mirror of driverHistory: the plates behind this row. Plate mode → its own
   // plate; driver mode → every plate the person drove that month.
@@ -111,6 +115,40 @@ export interface FleetRowDto {
   // imported transaction date (YYYY-MM-DD).
   isNewJoiner: boolean;
   joinDate: string | null;
+}
+
+// ---- "Rincian Outstanding" (the balance's audit trail) ----------------------
+// Two readings of one balance: per contributor (the opposite identity of the
+// row — drivers for a plate row, plates for a driver row) and per month, the
+// latter carrying the running balance. Dates stay raw YYYY-MM / YYYY-MM-DD; the
+// client formats them in WIB like every other date on the wire.
+
+export interface OutstandingPartDto {
+  label: string; // driver name, or plate in driver mode
+  due: number;
+  paid: number;
+  delta: number; // due − paid; negative = this contributor overpaid
+  from: string; // YYYY-MM-DD — its first row
+  to: string;
+}
+
+export interface OutstandingMonthDto {
+  ym: string; // YYYY-MM
+  due: number;
+  paid: number;
+  delta: number;
+  balance: number; // running balance after this month
+}
+
+export interface OutstandingBreakdownDto {
+  parts: OutstandingPartDto[]; // chronological
+  months: OutstandingMonthDto[]; // chronological
+  total: number; // equals summary.outstanding by construction
+  contributorCount: number; // contributors with a non-zero remainder
+  // Span of months that actually moved the balance (null when none did) — the
+  // grid cell's caption.
+  rangeFrom: string | null; // YYYY-MM
+  rangeTo: string | null;
 }
 
 // "Data Mentah Tanpa Plat": an unprocessed Manual Payment row imported without
@@ -307,6 +345,7 @@ function toFleetRow(row: GojekVehicleRow): FleetRowDto {
       outstanding: row.outstanding,
       outstandingMonth: row.outstandingMonth,
     },
+    ...(row.outstandingBreakdown ? { outstandingBreakdown: row.outstandingBreakdown } : {}),
     driverHistory: row.driverHistory,
     plateHistory: row.plateHistory,
     isExited: row.isExited,

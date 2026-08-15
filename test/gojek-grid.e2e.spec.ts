@@ -41,6 +41,10 @@ const YEAR = 2032;
 const MONTH = 5; // 31 days
 const GRAB_MONTH = 6;
 
+/** A business date inside the Gojek fixture period. */
+const d = (day: number) =>
+  `${YEAR}-${String(MONTH).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
 describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
   let app: INestApplication;
   let database: DatabaseService;
@@ -88,8 +92,6 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
       .returning();
     const importId = imp!.id;
 
-    const d = (day: number) =>
-      `${YEAR}-${String(MONTH).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const base = { importId, periodYear: YEAR, periodMonth: MONTH };
     await db.insert(fleetImportDetails).values([
       // G7771KA: dues on 3 & 4 -> inferred target round(950000/2)=475000
@@ -332,6 +334,62 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
       { amount: 500000, fromDay: 3, toDay: 3 },
       { amount: 450000, fromDay: 4, toDay: 4 },
     ]);
+  });
+
+  it('settles the obligation for BOTH setoran statuses, but only counts one as omset', async () => {
+    // The "Tidak Masuk Setoran" flag answers "is this recognised as setoran?",
+    // not "is the driver still on the hook?". A processed manual payment closes
+    // the obligation either way — otherwise the same rupiah would stick to the
+    // driver's Outstanding forever with nobody left to bill.
+    const grid = await gojek.buildGrid(MONTH, YEAR);
+    const row = grid.rows.find((r) => r.key === 'G7771KA')!;
+
+    // omset (Total Deduction / TOTAL HARI INI): the 50000 uncounted manual is out
+    expect(row.totalDeduction).toBe(980000);
+    expect(row.dailyCountedData[7]).toBe(0);
+    // outstanding: the very same 50000 IS credited — 950000 due − 550000 paid
+    expect(row.outstanding).toBe(400000);
+    // proof it is the flag alone that separates the two, not the day being skipped
+    expect(row.dailyData[7]).toBe(50000);
+    expect(row.totalDisplayAmount - row.totalDeduction).toBe(50000);
+  });
+
+  it('explains Outstanding per contributor and per month (Rincian Outstanding)', async () => {
+    const grid = await gojek.buildGrid(MONTH, YEAR, { includeOutstandingBreakdown: true });
+    const row = grid.rows.find((r) => r.key === 'G7771KA')!;
+    const breakdown = row.outstandingBreakdown!;
+
+    // the popup can never contradict the cell it opened from
+    expect(breakdown.total).toBe(row.outstanding);
+    // one month of data, folded from the same rows as the balance
+    expect(breakdown.months).toEqual([
+      { ym: `${YEAR}-05`, due: 950000, paid: 550000, delta: 400000, balance: 400000 },
+    ]);
+    // plate row → contributors are its drivers, spanning their first..last row
+    // (day 5 sits on a bebas-setoran day, so it bounds nothing)
+    expect(breakdown.parts).toEqual([
+      { label: 'BUDI', due: 950000, paid: 550000, delta: 400000, from: d(3), to: d(7) },
+    ]);
+    expect(breakdown.contributorCount).toBe(1);
+    expect(breakdown.rangeFrom).toBe(`${YEAR}-05`);
+    expect(breakdown.rangeTo).toBe(`${YEAR}-05`);
+  });
+
+  it('breaks a driver row down per plate instead of per driver', async () => {
+    const grid = await gojek.buildGrid(MONTH, YEAR, {
+      mode: 'driver',
+      includeOutstandingBreakdown: true,
+    });
+    const row = grid.rows.find((r) => r.driverName === 'BUDI')!;
+    const breakdown = row.outstandingBreakdown!;
+
+    expect(breakdown.total).toBe(row.outstanding);
+    expect(breakdown.parts.map((p) => p.label)).toEqual(['G7771KA']);
+  });
+
+  it('omits the breakdown unless the caller asks for it', async () => {
+    const grid = await gojek.buildGrid(MONTH, YEAR);
+    expect(grid.rows.every((r) => r.outstandingBreakdown === undefined)).toBe(true);
   });
 
   it('manual fleet_target wins over inference for G7772KB', async () => {

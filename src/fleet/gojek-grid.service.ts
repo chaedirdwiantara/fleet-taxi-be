@@ -16,6 +16,7 @@ import {
   NO_RENTAL_PARTNER,
   RawManualRow,
 } from './gojek-grid.types';
+import { buildOutstandingBreakdown, type OutstandingSlice } from './outstanding-breakdown';
 import { billedWindow, dailyTargetFrom } from './target-window';
 
 /**
@@ -33,6 +34,10 @@ const PLATE_KEY_SQL = sql`d.vehicle_plate_norm`;
 // their money stays visible (and matches driverRowKey('') === 'drv:').
 const DRIVER_KEY_SQL = sql`upper(regexp_replace(btrim(COALESCE(d.driver_name, '')), '\\s+', ' ', 'g'))`;
 const keySql = (mode: MonitoringMode): SQL => (mode === 'driver' ? DRIVER_KEY_SQL : PLATE_KEY_SQL);
+/** The identity a row's balance is broken DOWN by — always the opposite of the
+ * row key, so a plate is explained per driver and a driver per plate. */
+const partKeySql = (mode: MonitoringMode): SQL =>
+  mode === 'driver' ? PLATE_KEY_SQL : DRIVER_KEY_SQL;
 
 /** One row subject's slices of the history-spanning due/paid aggregate. */
 interface CumulativeStats {
@@ -79,6 +84,62 @@ export class GojekGridService {
     return (type ?? '').trim() || 'Other';
   }
 
+  // ── shared SQL fragments ──────────────────────────────────────────────
+  /** Partner scoping. Server-derived; never populated from client input. */
+  private scopeFilterSql(scopePlates?: string[]): SQL {
+    return scopePlates?.length
+      ? sql`AND d.vehicle_plate_norm IN (${sql.join(
+          scopePlates.map((p) => sql`${p}`),
+          sql`, `,
+        )})`
+      : sql``;
+  }
+
+  /**
+   * THE row set behind the Outstanding balance: every due/deduction/manual
+   * payment row of the given subjects, from their very first import up to the
+   * end of the selected month, minus the days nobody is billed for (explicit
+   * bebas-setoran exceptions and Rental Monitoring bookings — dropped from both
+   * sides, so a rented-out plate is neither charged nor credited).
+   *
+   * Deliberately shared by the balance aggregate and the breakdown that
+   * explains it: if the two ever read different rows, the popup would contradict
+   * the number it opened from.
+   *
+   * NOTE the paid side takes EVERY manual payment, `is_manual_payment_setoran`
+   * regardless. "Masuk / Tidak Masuk Setoran" answers a different question — is
+   * this recognised as setoran (omset) — while a processed manual payment
+   * settles the obligation either way. Keep the flag out of this expression.
+   */
+  private historyRows(
+    rowKey: SQL,
+    keys: string[],
+    periodEndExclusive: string,
+    scopeFilter: SQL,
+  ): SQL {
+    return sql`
+      FROM fleet_import_details d
+      WHERE d.transaction_date < ${periodEndExclusive}::date
+        AND (d.type ILIKE '%due%' OR d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%')
+        AND ${rowKey} IN (${sql.join(
+          keys.map((k) => sql`${k}`),
+          sql`, `,
+        )})
+        ${scopeFilter}
+        AND NOT EXISTS (
+          SELECT 1 FROM fleet_exceptions e
+          WHERE e.is_bebas_setoran = TRUE
+            AND e.exception_date = d.transaction_date
+            AND regexp_replace(upper(e.vehicle_plate), '[^A-Z0-9]', '', 'g') = d.vehicle_plate_norm
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM rentals r
+          WHERE r.plate_number_norm = d.vehicle_plate_norm
+            AND d.transaction_date BETWEEN r.start_date AND r.end_date
+        )
+    `;
+  }
+
   async buildGrid(
     month: number,
     year: number,
@@ -110,6 +171,11 @@ export class GojekGridService {
       // scope so they land in the rawRows queue ("Data Mentah Tanpa Plat").
       // NEVER set for partner scoping — a partner must not see unplated data.
       includeRawManual?: boolean;
+      // Attach each row's "Rincian Outstanding" (who / which months formed the
+      // balance). Costs one extra history aggregate, so only the monitoring
+      // grid — which renders it — asks for it; the dashboard summary, which
+      // composes this grid once per month of a range, does not.
+      includeOutstandingBreakdown?: boolean;
       // This month's slice of the dashboard's Tanggal date-range filter: adds
       // the dayWindow aggregates bounded to those days. Whole-month figures are
       // unaffected. Out-of-range values are ignored.
@@ -400,9 +466,12 @@ export class GojekGridService {
           .filter((k) => k !== '' || byDriver),
       ),
     ];
-    const [cumulativeMap, lifecycle] = await Promise.all([
+    const [cumulativeMap, lifecycle, sliceMap] = await Promise.all([
       this.fetchCumulativeStats(pivotKeys, month, year, dayWindow, mode, filters.scopePlates),
       this.fetchLifecycle(mode, filters.scopePlates),
+      filters.includeOutstandingBreakdown
+        ? this.fetchOutstandingSlices(pivotKeys, month, year, mode, filters.scopePlates)
+        : undefined,
     ]);
 
     // ── per-row target + outstanding (legacy loop, ported 1:1) ───────────
@@ -482,6 +551,11 @@ export class GojekGridService {
       const cum = cumulativeMap.get(statsKey);
       v.outstanding = (cum?.cumulativeTarget ?? 0) - (cum?.cumulativePaid ?? 0);
       v.outstandingMonth = (cum?.monthTarget ?? 0) - (cum?.monthPaid ?? 0);
+      // Same rows, read per contributor and per month — so `total` here is
+      // `outstanding` above, arrived at from the other direction.
+      if (sliceMap) {
+        v.outstandingBreakdown = buildOutstandingBreakdown(sliceMap.get(statsKey) ?? [], mode);
+      }
       if (dayWindow !== undefined) {
         v.monthTargetToDay = cum?.monthTargetToDay ?? 0;
         v.monthPaidToDay = cum?.monthPaidToDay ?? 0;
@@ -824,12 +898,7 @@ export class GojekGridService {
     if (scopePlates !== undefined && scopePlates.length === 0) return empty;
 
     const rowKey = keySql(mode);
-    const scopeFilter = scopePlates?.length
-      ? sql`AND d.vehicle_plate_norm IN (${sql.join(
-          scopePlates.map((p) => sql`${p}`),
-          sql`, `,
-        )})`
-      : sql``;
+    const scopeFilter = this.scopeFilterSql(scopePlates);
     // Plate rows: an empty plate is not a subject. Driver rows: the nameless
     // bucket IS a subject (its money must stay visible), so nothing is dropped.
     const subjectFilter = mode === 'driver' ? sql`TRUE` : sql`d.vehicle_plate_norm <> ''`;
@@ -968,12 +1037,7 @@ export class GojekGridService {
     if (!keys.length) return map;
 
     const rowKey = keySql(mode);
-    const scopeFilter = scopePlates?.length
-      ? sql`AND d.vehicle_plate_norm IN (${sql.join(
-          scopePlates.map((p) => sql`${p}`),
-          sql`, `,
-        )})`
-      : sql``;
+    const scopeFilter = this.scopeFilterSql(scopePlates);
 
     const mm = String(month).padStart(2, '0');
     const periodStart = `${year}-${mm}-01`;
@@ -1035,25 +1099,7 @@ export class GojekGridService {
              AND (d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%') THEN ABS(d.amount)
             ELSE 0
         END)::bigint AS month_paid${windowColumns}
-      FROM fleet_import_details d
-      WHERE d.transaction_date < ${periodEndExclusive}::date
-        AND (d.type ILIKE '%due%' OR d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%')
-        AND ${rowKey} IN (${sql.join(
-          keys.map((k) => sql`${k}`),
-          sql`, `,
-        )})
-        ${scopeFilter}
-        AND NOT EXISTS (
-          SELECT 1 FROM fleet_exceptions e
-          WHERE e.is_bebas_setoran = TRUE
-            AND e.exception_date = d.transaction_date
-            AND regexp_replace(upper(e.vehicle_plate), '[^A-Z0-9]', '', 'g') = d.vehicle_plate_norm
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM rentals r
-          WHERE r.plate_number_norm = d.vehicle_plate_norm
-            AND d.transaction_date BETWEEN r.start_date AND r.end_date
-        )
+      ${this.historyRows(rowKey, keys, periodEndExclusive, scopeFilter)}
       GROUP BY ${rowKey}
     `);
 
@@ -1072,6 +1118,71 @@ export class GojekGridService {
             }
           : {}),
       });
+    }
+    return map;
+  }
+
+  /**
+   * The explanation of that balance: the same rows, cut per contributor and per
+   * month instead of collapsed into one figure (see outstanding-breakdown.ts).
+   *
+   * One extra aggregate over a scan the balance already performs — the finer
+   * GROUP BY is the whole difference. Only requested for the monitoring grid
+   * itself; the dashboard summary composes buildGrid month by month and never
+   * reads a row's breakdown, so it must not pay for one.
+   */
+  private async fetchOutstandingSlices(
+    keys: string[],
+    month: number,
+    year: number,
+    mode: MonitoringMode = 'plate',
+    scopePlates?: string[],
+  ): Promise<Map<string, OutstandingSlice[]>> {
+    const map = new Map<string, OutstandingSlice[]>();
+    if (!keys.length) return map;
+
+    const rowKey = keySql(mode);
+    const partKey = partKeySql(mode);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const periodEndExclusive = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+    const result = (await this.database.db.execute(sql`
+      SELECT
+        ${rowKey} AS key,
+        ${partKey} AS part_key,
+        to_char(d.transaction_date, 'YYYY-MM') AS ym,
+        MIN(d.transaction_date)::text AS first_date,
+        MAX(d.transaction_date)::text AS last_date,
+        SUM(CASE WHEN d.type ILIKE '%due%' THEN ABS(d.amount) ELSE 0 END)::bigint AS due,
+        SUM(CASE
+            WHEN d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%' THEN ABS(d.amount)
+            ELSE 0
+        END)::bigint AS paid
+      ${this.historyRows(rowKey, keys, periodEndExclusive, this.scopeFilterSql(scopePlates))}
+      GROUP BY ${rowKey}, ${partKey}, to_char(d.transaction_date, 'YYYY-MM')
+    `)) as unknown as Array<{
+      key: string;
+      part_key: string | null;
+      ym: string;
+      first_date: string;
+      last_date: string;
+      due: string; // ::bigint arrives as a string
+      paid: string;
+    }>;
+
+    for (const row of result) {
+      const slice: OutstandingSlice = {
+        partKey: row.part_key ?? '',
+        ym: row.ym,
+        firstDate: row.first_date,
+        lastDate: row.last_date,
+        due: Number(row.due),
+        paid: Number(row.paid),
+      };
+      const slices = map.get(row.key);
+      if (slices) slices.push(slice);
+      else map.set(row.key, [slice]);
     }
     return map;
   }
