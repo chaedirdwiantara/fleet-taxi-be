@@ -306,6 +306,38 @@ describe('partner portal fleet monitoring (Daftarkan Plat + scoped grids)', () =
     expect(oneDay.body.data.range.totalDeduction).toBe(daily.find((d) => d.day === 5)!.total);
   });
 
+  it('explains its Outstanding without reaching outside the partner scope', async () => {
+    const a = await login();
+    const url = `/partner/portal/fleet/gojek/grid?month=${MONTH}&year=${YEAR}`;
+
+    const plateGrid = await a.get(`${url}&mode=plate`).expect(200);
+    const mine = plateGrid.body.data.rows.find(
+      (r: { plateNorm: string }) => r.plateNorm === MINE_NORM,
+    );
+    // the popup can never contradict the cell it opened from
+    expect(mine.outstandingBreakdown.total).toBe(mine.summary.outstanding);
+    // a plate row is broken down per DRIVER — only those who drove this plate
+    expect(mine.outstandingBreakdown.parts.map((p: { label: string }) => p.label)).toEqual([
+      'MINE DRIVER',
+    ]);
+
+    // a driver row is broken down per PLATE, and the scope confines that list
+    // to the partner's own vehicles even though the person is global
+    const driverGrid = await a.get(`${url}&mode=driver`).expect(200);
+    const person = driverGrid.body.data.rows.find(
+      (r: { driverName: string }) => r.driverName === 'MINE DRIVER',
+    );
+    expect(person.outstandingBreakdown.total).toBe(person.summary.outstanding);
+    expect(person.outstandingBreakdown.parts.map((p: { label: string }) => p.label)).toEqual([
+      MINE_NORM,
+    ]);
+    const everyLabel = driverGrid.body.data.rows.flatMap(
+      (r: { outstandingBreakdown: { parts: { label: string }[] } }) =>
+        r.outstandingBreakdown.parts.map((p) => p.label),
+    );
+    expect(everyLabel).not.toContain(OTHER_NORM);
+  });
+
   it('filters its own grid by q and vehicleType — and a filter can never widen the scope', async () => {
     const a = await login();
     const gojekUrl = `/partner/portal/fleet/gojek/grid?month=${MONTH}&year=${YEAR}`;
