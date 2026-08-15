@@ -51,6 +51,9 @@ export class AdminFleetService {
       // the "Data Mentah Tanpa Plat" processing queue is an admin concern —
       // unplated rows can never belong to a partner's scope
       includeRawManual: true,
+      // Outstanding Total is an all-history figure: the grid ships the audit
+      // trail behind it so every cell can be opened and checked.
+      includeOutstandingBreakdown: true,
     });
     return toFleetGrid(result);
   }
