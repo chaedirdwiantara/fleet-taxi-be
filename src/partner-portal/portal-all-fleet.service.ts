@@ -67,11 +67,15 @@ export class PortalAllFleetService {
 
     const gojek: AllFleetInputRow[] = gojekGrid.rows.map((row) => {
       const { days, zeroDays } = splitDays(row.dailyCountedData);
+      // A plate row is labelled by its Type alone, so the sublabel and the sort
+      // key are the same value — read once so they can never disagree.
+      const vehicleType = byDriver ? null : row.vehicleType || typeByNorm.get(row.vehicle) || null;
       return {
         // Plate mode: the grid's row key already IS the normalized plate.
         key: byDriver ? row.key : row.vehicle,
         label: byDriver ? row.driverName : row.vehicle,
-        sublabel: byDriver ? null : row.vehicleType || typeByNorm.get(row.vehicle) || null,
+        sublabel: vehicleType,
+        vehicleType,
         days,
         zeroDays,
         gojekDays: gojekDayStatuses(row),
@@ -83,14 +87,16 @@ export class PortalAllFleetService {
 
     const grab: AllFleetInputRow[] = grabGrid.rows.map((row) => {
       const { days, zeroDays } = splitDays(row.dailyData);
+      const vehicleType = byDriver
+        ? null
+        : normalizeGrabType(row.vehicleType) || typeByNorm.get(row.plateNumber) || null;
       return {
         // Plate mode: several composite rows (city / driver) share one plate and
         // merge in the matrix.
         key: byDriver ? row.key : row.plateNumber,
         label: byDriver ? row.driverName : row.plateNumber,
-        sublabel: byDriver
-          ? null
-          : normalizeGrabType(row.vehicleType) || typeByNorm.get(row.plateNumber) || null,
+        sublabel: vehicleType,
+        vehicleType,
         days,
         zeroDays,
         history: byDriver

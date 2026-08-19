@@ -3,7 +3,7 @@ import { SQL, and, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
 import { driverRowKey, type MonitoringMode } from '../common/util/monitoring-mode';
 import { clampDayWindow, type DayWindow } from '../common/util/period';
 import { normalizePlate } from '../common/util/plate';
-import { byteCompare } from '../common/util/sort';
+import { byteCompare, compareVehicleType } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
 import { normalizeDriverName } from '../partner-drivers/driver.constants';
 import { fleetExceptions, fleetImportDetails, fleetTargets, rentals } from '../db/schema';
@@ -171,6 +171,12 @@ export class GojekGridService {
       // scope so they land in the rawRows queue ("Data Mentah Tanpa Plat").
       // NEVER set for partner scoping — a partner must not see unplated data.
       includeRawManual?: boolean;
+      // Admin surface only: keep Rental Partner as the OUTERMOST sort key, so
+      // the column the admin grid merges with a rowspan stays one unbroken run
+      // per partner. The partner portal renders one partner's own plates and no
+      // such column, so its rows lead with the vehicle Type instead — sorting
+      // them on a label they never see would look arbitrary. See the sort below.
+      groupByRentalPartner?: boolean;
       // Attach each row's "Rincian Outstanding" (who / which months formed the
       // balance). Costs one extra history aggregate, so only the monitoring
       // grid — which renders it — asks for it; the dashboard summary, which
@@ -682,11 +688,20 @@ export class GojekGridService {
       );
     }
 
-    // legacy strcmp order: rental_partner then driver_name (region_name
-    // tiebreaker is intentionally dropped — region resolution is out of R1 scope)
+    // Reading order: [Rental Partner on admin] → vehicle Type A→Z → driver name.
+    // Type is what a reader compares one plate to another by, so the fleet is
+    // listed model by model — inside a partner on the admin grid (whose Rental
+    // Partner column is rowspan-merged and must stay contiguous), and straight
+    // away on the partner portal, which has no such column.
+    // Driver rows carry no Type — a person is not one model — so the middle key
+    // is skipped there and the legacy name order stands.
+    // (legacy strcmp otherwise; the region_name tiebreaker is intentionally
+    // dropped — region resolution is out of R1 scope)
     rows.sort(
       (a, b) =>
-        byteCompare(a.rentalPartner, b.rentalPartner) || byteCompare(a.driverName, b.driverName),
+        (filters.groupByRentalPartner ? byteCompare(a.rentalPartner, b.rentalPartner) : 0) ||
+        (byDriver ? 0 : compareVehicleType(a.vehicleType, b.vehicleType)) ||
+        byteCompare(a.driverName, b.driverName),
     );
 
     // table totals over the fully filtered set (legacy table_* values)

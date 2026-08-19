@@ -112,6 +112,31 @@ describe('buildRentalGrid', () => {
     expect(grid.rows.at(-1)).toMatchObject({ plateNorm: 'B9ZZZ', days: {}, bookings: [] });
   });
 
+  it('lists the fleet by vehicle Type A→Z, most omset first within a Type', () => {
+    const grid = buildRentalGrid(
+      [
+        // idle plates aside, only the Type decides the block a plate sits in
+        row({
+          id: 1,
+          plateNumberNorm: 'B2WUL',
+          plateNumber: 'B 2 WUL',
+          vehicleType: 'Wuling Cloud',
+        }),
+        row({ id: 2, plateNumberNorm: 'B3BYD', plateNumber: 'B 3 BYD', vehicleType: 'BYD M6' }),
+      ],
+      [
+        plate(),
+        plate({ plateNumberNorm: 'B2WUL', plateNumber: 'B 2 WUL', vehicleType: 'Wuling Cloud' }),
+        plate({ plateNumberNorm: 'B3BYD', plateNumber: 'B 3 BYD', vehicleType: 'BYD M6' }),
+        plate({ plateNumberNorm: 'B9ZZZ', plateNumber: 'B 9 ZZZ', vehicleType: null }),
+      ],
+      JULY,
+    );
+
+    // "Air EV" < "BYD M6" < "Wuling Cloud"; the untyped plate stays at the bottom
+    expect(grid.rows.map((r) => r.plateNorm)).toEqual(['B1793SCP', 'B3BYD', 'B2WUL', 'B9ZZZ']);
+  });
+
   it('shows a rental booked on a plate that was never registered', () => {
     const grid = buildRentalGrid(
       [row({ plateNumber: 'B 5 XYZ', plateNumberNorm: 'B5XYZ' })],

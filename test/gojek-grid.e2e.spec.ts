@@ -499,6 +499,29 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     expect(none.totalDeduction).toBe(0);
   });
 
+  it('orders plate rows by vehicle Type A→Z, under the Rental Partner on admin', async () => {
+    // "Air EV" (G7772KB) sorts ahead of "Premium - Innova" (G7771KA)
+    const vehicleTypeByNorm = new Map([
+      ['G7771KA', 'Premium - Innova'],
+      ['G7772KB', 'Air EV'],
+    ]);
+    const opts = { scopePlates: bothPlates, vehicleTypeByNorm };
+
+    // Partner portal: no Rental Partner column, so the Type leads outright
+    const portal = await gojek.buildGrid(MONTH, YEAR, opts);
+    expect(portal.rows.map((r) => r.key)).toEqual(['G7772KB', 'G7771KA']);
+
+    // Admin: the rowspan-merged Rental Partner column stays the outermost key,
+    // and the Type only orders the plates within one partner. G7771KA has no
+    // partner label ('' sorts first), G7772KB carries the fleet_target's.
+    const admin = await gojek.buildGrid(MONTH, YEAR, { ...opts, groupByRentalPartner: true });
+    expect(admin.rows.map((r) => r.key)).toEqual(['G7771KA', 'G7772KB']);
+
+    // A person is not one model — driver mode keeps the legacy name order
+    const byDriver = await gojek.buildGrid(MONTH, YEAR, { ...opts, mode: 'driver' as const });
+    expect(byDriver.rows.map((r) => r.driverName)).toEqual(['BUDI', 'SITI']);
+  });
+
   it('resolves a per-plate Type in driver mode too (the "PLAT - Type" label)', async () => {
     const opts = {
       scopePlates: bothPlates,

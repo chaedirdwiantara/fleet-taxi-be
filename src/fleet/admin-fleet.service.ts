@@ -51,6 +51,10 @@ export class AdminFleetService {
       // the "Data Mentah Tanpa Plat" processing queue is an admin concern —
       // unplated rows can never belong to a partner's scope
       includeRawManual: true,
+      // The admin grid reads across every partner and merges the Rental Partner
+      // column with a rowspan, so that column stays the outermost sort key; the
+      // vehicle Type orders the plates within each partner.
+      groupByRentalPartner: true,
       // Outstanding Total is an all-history figure: the grid ships the audit
       // trail behind it so every cell can be opened and checked.
       includeOutstandingBreakdown: true,

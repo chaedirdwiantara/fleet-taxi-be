@@ -8,6 +8,7 @@
  * money has been collected*: Rental has no daily setoran target the way Gojek
  * does, so payment status is the status worth watching.
  */
+import { compareVehicleType } from '../common/util/sort';
 import { rentals } from '../db/schema';
 import { presentRental, rentalBookingDays, type PaymentStatus } from './rental-presenter';
 
@@ -102,8 +103,9 @@ function emptyRow(plate: RegisteredPlateInput): RentalGridRowDto {
  * screen exists to surface. Idle plates therefore appear with an empty row and
  * 0 rented days rather than being dropped.
  *
- * Row order: most omset first, plate as the stable tiebreaker — the same
- * reading order as the other monitoring grids.
+ * Row order: vehicle Type A→Z, then most omset first, plate as the stable
+ * tiebreaker — the same reading order as the other monitoring grids. Untyped
+ * plates land at the bottom rather than heading the table.
  */
 export function buildRentalGrid(
   bookings: RentalRow[],
@@ -181,7 +183,12 @@ export function buildRentalGrid(
       row.bookings.sort((a, b) => a.displayStartDate.localeCompare(b.displayStartDate));
       return row;
     })
-    .sort((a, b) => b.totals.omset - a.totals.omset || a.plateNorm.localeCompare(b.plateNorm));
+    .sort(
+      (a, b) =>
+        compareVehicleType(a.vehicleType, b.vehicleType) ||
+        b.totals.omset - a.totals.omset ||
+        a.plateNorm.localeCompare(b.plateNorm),
+    );
 
   const dailyTotals: Record<number, number> = {};
   const totals = emptyTotals();

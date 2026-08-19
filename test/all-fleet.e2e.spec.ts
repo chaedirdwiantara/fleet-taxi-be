@@ -294,9 +294,10 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
 
     expect(grid.mode).toBe('plate');
     expect(grid.daysInMonth).toBe(31);
-    expect(grid.rows.map((r) => r.key)).toEqual([PLATE_A, PLATE_B]);
+    // Row order is the vehicle Type A→Z: PLATE_B is an "Air EV", PLATE_A a "Denza"
+    expect(grid.rows.map((r) => r.key)).toEqual([PLATE_B, PLATE_A]);
 
-    const a = grid.rows[0];
+    const a = grid.rows.find((r) => r.key === PLATE_A)!;
     expect(a.totals).toEqual({
       gojek: GOJEK_A,
       grab: GRAB_A,
@@ -313,7 +314,7 @@ describe('All Fleet Monitoring + plate/driver mode', () => {
     // drivers of the plate, with the day range they were seen
     expect(a.history.map((h) => h.label)).toEqual([BUDI]);
 
-    expect(grid.rows[1].totals).toEqual({
+    expect(grid.rows.find((r) => r.key === PLATE_B)!.totals).toEqual({
       gojek: GOJEK_B,
       grab: GRAB_B,
       rental: 0,
