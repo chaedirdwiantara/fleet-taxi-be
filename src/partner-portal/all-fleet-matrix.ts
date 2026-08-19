@@ -17,6 +17,7 @@
  * driver) plus import rows with an empty driver name.
  */
 import type { MonitoringMode } from '../common/util/monitoring-mode';
+import { compareVehicleType } from '../common/util/sort';
 import type { DayFactsDto } from '../fleet/fleet-presenter';
 import type { RentalDailyIncomeDto } from '../partner-rentals/rental-presenter';
 
@@ -62,6 +63,10 @@ export interface AllFleetRow {
   key: string; // plate norm, or `drv:<NAME>`
   label: string; // plate (display form) or driver name
   sublabel: string | null; // "Denza · Jakarta" in plate mode
+  /** The plate's Type on its own, the row's primary sort key in plate mode.
+   * Kept apart from `sublabel`, which the Rental source decorates with the
+   * region. Null in driver mode — a person is not one model. */
+  vehicleType: string | null;
   history: AllFleetHistoryEntry[];
   days: Record<number, AllFleetDayCell>;
   totals: SourceAmounts & { total: number };
@@ -92,6 +97,11 @@ export interface AllFleetInputRow {
   key: string;
   label: string;
   sublabel?: string | null;
+  /** The plate's Type, for the row ordering. The first source that knows it
+   * wins, and the sources are absorbed registry-first (Gojek, then Grab, then
+   * Rental) — so the Type a partner registered in Daftarkan Plat outranks the
+   * one typed on a rental booking, and a source that knows none defers. */
+  vehicleType?: string | null;
   /** Integer rupiah per day-of-month, already computed by the source service. */
   days: Record<number, number>;
   /** Days present in the source data that earned Rp 0 — lets the matrix tell
@@ -131,8 +141,21 @@ interface Draft extends Omit<AllFleetRow, 'history'> {
   historyRanges: Map<string, { label: string; sublabel: string | null; from: number; to: number }>;
 }
 
-function draft(key: string, label: string, sublabel: string | null): Draft {
-  return { key, label, sublabel, days: {}, totals: emptyTotals(), historyRanges: new Map() };
+function draft(
+  key: string,
+  label: string,
+  sublabel: string | null,
+  vehicleType: string | null = null,
+): Draft {
+  return {
+    key,
+    label,
+    sublabel,
+    vehicleType,
+    days: {},
+    totals: emptyTotals(),
+    historyRanges: new Map(),
+  };
 }
 
 function add(
@@ -215,9 +238,10 @@ function finalize(row: Draft): AllFleetRow {
 }
 
 /**
- * Merge the three sources into the matrix. Rows are sorted by total income
- * descending (the reading order of the legacy page: biggest earner first), with
- * the label as a stable tiebreaker.
+ * Merge the three sources into the matrix. Rows are sorted by vehicle Type A→Z
+ * (plate mode only — see the sort below), then by total income descending (the
+ * reading order of the legacy page: biggest earner first), with the label as a
+ * stable tiebreaker.
  */
 export function buildAllFleetMatrix(input: BuildAllFleetInput): AllFleetMatrix {
   const { mode, daysInMonth } = input;
@@ -226,7 +250,12 @@ export function buildAllFleetMatrix(input: BuildAllFleetInput): AllFleetMatrix {
   const residual = draft(RESIDUAL_KEY, byDriver ? 'Tanpa driver' : 'Tanpa plat', null);
   let hasResidual = false;
 
-  const target = (key: string, label: string, sublabel: string | null): Draft => {
+  const target = (
+    key: string,
+    label: string,
+    sublabel: string | null,
+    vehicleType: string | null = null,
+  ): Draft => {
     // A driver row with no name, or a plate row with no plate, has no subject to
     // attribute to — that money belongs in the residual row, not in a blank one.
     if (label === '') {
@@ -236,16 +265,22 @@ export function buildAllFleetMatrix(input: BuildAllFleetInput): AllFleetMatrix {
     const existing = drafts.get(key);
     if (existing) {
       if (!existing.sublabel && sublabel) existing.sublabel = sublabel;
+      if (!existing.vehicleType && vehicleType) existing.vehicleType = vehicleType;
       return existing;
     }
-    const created = draft(key, label, sublabel);
+    const created = draft(key, label, sublabel, vehicleType);
     drafts.set(key, created);
     return created;
   };
 
   const absorb = (source: AllFleetSource, inputRows: AllFleetInputRow[]) => {
     for (const subject of inputRows) {
-      const row = target(subject.key, subject.label, subject.sublabel ?? null);
+      const row = target(
+        subject.key,
+        subject.label,
+        subject.sublabel ?? null,
+        subject.vehicleType ?? null,
+      );
       add(row, source, subject.days, daysInMonth);
       markZeroDays(row, subject.zeroDays ?? [], daysInMonth);
       // Only a real subject has a target to be measured against; the residual
@@ -273,13 +308,27 @@ export function buildAllFleetMatrix(input: BuildAllFleetInput): AllFleetMatrix {
       continue;
     }
     const sublabel = [plate.vehicleType, plate.region].filter(Boolean).join(' · ') || null;
-    const row = target(plate.plateNorm, plate.plateNumber || plate.plateNorm, sublabel);
+    const row = target(
+      plate.plateNorm,
+      plate.plateNumber || plate.plateNorm,
+      sublabel,
+      plate.vehicleType,
+    );
     add(row, 'rental', plate.days, daysInMonth);
   }
 
+  // Plate mode lists the fleet model by model (A→Z), the same reading order as
+  // Gojek and Rental Monitoring; within one Type the legacy order stands —
+  // biggest earner first, label as the stable tiebreaker. Driver rows have no
+  // Type, so there the key is inert and the earner order is all that is left.
   const rows = [...drafts.values()]
     .map(finalize)
-    .sort((a, b) => b.totals.total - a.totals.total || a.label.localeCompare(b.label));
+    .sort(
+      (a, b) =>
+        (byDriver ? 0 : compareVehicleType(a.vehicleType, b.vehicleType)) ||
+        b.totals.total - a.totals.total ||
+        a.label.localeCompare(b.label),
+    );
 
   const dailyTotals: Record<number, AllFleetDayCell> = {};
   const totals = emptyTotals();

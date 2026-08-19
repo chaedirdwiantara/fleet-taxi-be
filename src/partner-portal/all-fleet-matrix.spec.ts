@@ -104,6 +104,57 @@ describe('buildAllFleetMatrix — plate mode', () => {
     expect(matrix.rows[0].label).toBe('B 1 AAA');
   });
 
+  it('lists the fleet by vehicle Type A→Z, biggest earner first within a Type', () => {
+    const matrix = buildAllFleetMatrix(
+      input({
+        gojek: [
+          gojek({
+            key: 'B1AAA',
+            label: 'B1AAA',
+            vehicleType: 'Wuling Cloud',
+            days: { 1: 900_000 },
+          }),
+          gojek({ key: 'B2BBB', label: 'B2BBB', vehicleType: 'BYD M6', days: { 1: 100_000 } }),
+          gojek({ key: 'B3CCC', label: 'B3CCC', vehicleType: 'byd m6', days: { 1: 500_000 } }),
+        ],
+      }),
+    );
+
+    // "byd m6" is the same model as "BYD M6" — one block, sorted by earnings
+    expect(matrix.rows.map((r) => r.key)).toEqual(['B3CCC', 'B2BBB', 'B1AAA']);
+  });
+
+  it('parks a plate with no Type at the bottom, never at the top', () => {
+    const matrix = buildAllFleetMatrix(
+      input({
+        gojek: [
+          gojek({ key: 'B1AAA', label: 'B1AAA', vehicleType: null, days: { 1: 900_000 } }),
+          gojek({
+            key: 'B2BBB',
+            label: 'B2BBB',
+            vehicleType: 'Wuling Cloud',
+            days: { 1: 100_000 },
+          }),
+        ],
+      }),
+    );
+
+    expect(matrix.rows.map((r) => r.key)).toEqual(['B2BBB', 'B1AAA']);
+  });
+
+  it('takes the Type from whichever source knows it', () => {
+    const matrix = buildAllFleetMatrix(
+      input({
+        gojek: [gojek({ key: 'B1AAA', label: 'B1AAA', sublabel: null, vehicleType: null })],
+        // Rental carries the Type inside a decorated sublabel ("Denza · Jakarta")
+        rental: [rental()],
+      }),
+    );
+
+    expect(matrix.rows[0].vehicleType).toBe('Denza');
+    expect(matrix.rows[0].sublabel).toBe('Denza · Jakarta');
+  });
+
   it('sorts by total desc and counts subjects vs earners', () => {
     const matrix = buildAllFleetMatrix(
       input({
