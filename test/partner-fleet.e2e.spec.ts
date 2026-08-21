@@ -26,6 +26,7 @@ import {
   userRoles,
   users,
 } from '../src/db/schema';
+import { withDeadlockRetry } from './deadlock';
 
 const RUN = `pf${Date.now()}`;
 const PASSWORD = 'partner-fleet-pw';
@@ -162,15 +163,17 @@ describe('partner portal fleet monitoring (Daftarkan Plat + scoped grids)', () =
 
   afterAll(async () => {
     const { db } = database;
-    await db
-      .delete(partnerPlates)
-      .where(inArray(partnerPlates.partnerId, [partnerId, otherPartnerId]));
-    await db.delete(fleetImports).where(eq(fleetImports.periodYear, YEAR));
-    await db.delete(grabImports).where(eq(grabImports.periodYear, YEAR));
-    await dropDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
-    await dropDetailPartition(database, 'grab_import_details', YEAR, MONTH);
-    await db.delete(users).where(eq(users.id, userId));
-    await db.delete(partners).where(inArray(partners.id, [partnerId, otherPartnerId]));
+    await withDeadlockRetry(async () => {
+      await db
+        .delete(partnerPlates)
+        .where(inArray(partnerPlates.partnerId, [partnerId, otherPartnerId]));
+      await db.delete(fleetImports).where(eq(fleetImports.periodYear, YEAR));
+      await db.delete(grabImports).where(eq(grabImports.periodYear, YEAR));
+      await dropDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
+      await dropDetailPartition(database, 'grab_import_details', YEAR, MONTH);
+      await db.delete(users).where(eq(users.id, userId));
+      await db.delete(partners).where(inArray(partners.id, [partnerId, otherPartnerId]));
+    });
     await app.close();
   });
 

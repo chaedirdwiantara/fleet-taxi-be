@@ -33,6 +33,7 @@ import {
   userRoles,
   users,
 } from '../src/db/schema';
+import { withDeadlockRetry } from './deadlock';
 
 const RUN = `grid${Date.now()}`;
 const ADMIN_EMAIL = `${RUN}@test.example`;
@@ -281,16 +282,18 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
 
   afterAll(async () => {
     const { db } = database;
-    await db.delete(fleetImports).where(eq(fleetImports.periodYear, YEAR));
-    await db.delete(grabImports).where(eq(grabImports.periodYear, YEAR));
-    await dropDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
-    await dropDetailPartition(database, 'grab_import_details', YEAR, GRAB_MONTH);
-    await db.delete(fleetTargets).where(inArray(fleetTargets.id, cleanupTargetIds));
-    await db.delete(grabTargets).where(eq(grabTargets.plateNumber, 'B5678ZZ'));
-    await db.delete(fleetExceptions).where(eq(fleetExceptions.vehiclePlate, 'G7771KA'));
-    // cascades to partner_plates
-    await db.delete(partners).where(inArray(partners.id, [partnerAId, partnerBId]));
-    await db.delete(users).where(eq(users.id, adminId));
+    await withDeadlockRetry(async () => {
+      await db.delete(fleetImports).where(eq(fleetImports.periodYear, YEAR));
+      await db.delete(grabImports).where(eq(grabImports.periodYear, YEAR));
+      await dropDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
+      await dropDetailPartition(database, 'grab_import_details', YEAR, GRAB_MONTH);
+      await db.delete(fleetTargets).where(inArray(fleetTargets.id, cleanupTargetIds));
+      await db.delete(grabTargets).where(eq(grabTargets.plateNumber, 'B5678ZZ'));
+      await db.delete(fleetExceptions).where(eq(fleetExceptions.vehiclePlate, 'G7771KA'));
+      // cascades to partner_plates
+      await db.delete(partners).where(inArray(partners.id, [partnerAId, partnerBId]));
+      await db.delete(users).where(eq(users.id, adminId));
+    });
     await app.close();
   });
 
