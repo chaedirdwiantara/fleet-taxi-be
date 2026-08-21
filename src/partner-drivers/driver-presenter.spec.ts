@@ -17,6 +17,8 @@ function row(overrides: Partial<DriverRow> = {}): DriverRow {
     email: 'budi@example.com',
     phone: '0812xxxxxxx',
     address: 'Jl. Melati 1',
+    homeLat: null,
+    homeLng: null,
     ktpNo: '3174xxxxxxxxxxxx',
     simNo: 'SIM-123',
     simExpired: '2027-03-15',
@@ -35,6 +37,7 @@ function row(overrides: Partial<DriverRow> = {}): DriverRow {
     depositDecidedAt: null,
     isActive: true,
     resignedAt: null,
+    exitedAt: null,
     depositReturnStatus: 'none',
     depositReturnDecidedAt: null,
     createdAt: new Date('2026-07-01T03:00:00Z'),
@@ -84,6 +87,7 @@ describe('presentDriverSummary', () => {
       isActive: true,
       depositAmount: 1_500_000,
       resignedAt: null,
+      exitedAt: null,
       depositReturnStatus: 'none',
       joinedAt: '2026-07-01T03:00:00.000Z',
     });
@@ -94,6 +98,10 @@ describe('presentDriverSummary', () => {
     expect(summary).not.toHaveProperty('registrationStatus');
     expect(summary).not.toHaveProperty('ktpVerified');
     expect(summary).not.toHaveProperty('depositStatus');
+  });
+
+  it('passes the auto-detected exit date through as a plain date string', () => {
+    expect(presentDriverSummary(row({ exitedAt: '2026-08-11' })).exitedAt).toBe('2026-08-11');
   });
 
   it('serializes resignedAt for resigned drivers', () => {
@@ -120,5 +128,11 @@ describe('presentDriverDetail', () => {
     expect(detail.depositReturnDecidedAt).toBe('2026-07-11T00:00:00.000Z');
     expect(detail.updatedAt).toBe('2026-07-02T04:30:00.000Z');
     expect(detail.documents).toEqual(documents);
+  });
+
+  it('exposes the home-survey coordinates as JSON numbers', () => {
+    const detail = presentDriverDetail(row({ homeLat: -6.229728, homeLng: 106.6894 }), []);
+    expect(detail.homeLat).toBe(-6.229728);
+    expect(detail.homeLng).toBe(106.6894);
   });
 });

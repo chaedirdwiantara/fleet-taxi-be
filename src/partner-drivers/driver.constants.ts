@@ -9,6 +9,7 @@ export const DRIVER_DOCUMENT_KINDS = [
   'ktp',
   'sim',
   'skck',
+  'home_survey', // foto survey rumah — pairs with address + home_lat/home_lng
   'deposit_proof',
   'deposit_return_proof',
 ] as const;

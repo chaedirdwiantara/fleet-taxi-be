@@ -1,15 +1,16 @@
 /**
  * Driver roster integration tests: the roster is SYNCED from fleet-monitoring
  * import data (Gojek + Grab) on GET /partner/portal/drivers; manual edits fill
- * in completeness and always win over re-syncs. Covers auto-sync, filters,
- * the PATCH lifecycle (resign → deposit-return gate → un-resign reset),
- * name-conflict 409, documents, and cross-partner isolation.
+ * in completeness and always win over re-syncs. Covers auto-sync, auto exit
+ * detection ("Driver Keluar"), manual registration, filters, the PATCH
+ * lifecycle (resign → deposit-return gate → un-resign reset), the home-survey
+ * fields, name-conflict 409, documents, and cross-partner isolation.
  * Needs docker-compose Postgres + Redis and applied migrations.
  */
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import * as argon2 from 'argon2';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
@@ -36,6 +37,10 @@ const PLATE_A = 'B 7301 DRA';
 const PLATE_A_NORM = 'B7301DRA';
 const PLATE_B = 'B 7302 DRB';
 const PLATE_B_NORM = 'B7302DRB';
+
+/** Fixture day inside the spec's own (YEAR, MONTH) period. */
+const d = (day: number) =>
+  `${YEAR}-${String(MONTH).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
 // 1x1 JPEG — tiny but valid body for the dev upload sink
 const JPG = Buffer.from(
@@ -104,6 +109,39 @@ describe('partner driver roster (fleet sync)', () => {
     };
   };
 
+  const byName = (data: Array<Record<string, unknown>>) =>
+    new Map(data.map((r) => [String(r.name).toUpperCase(), r]));
+
+  /**
+   * Newest gojek transaction date across the WHOLE table — the exit horizon the
+   * sync compares against (global on purpose, like the Gojek grid). Specs share
+   * one database, so a "still active" fixture has to sit exactly ON that date
+   * rather than on a hard-coded one.
+   */
+  const gojekHorizon = async (): Promise<string> => {
+    const rows = (await database.db.execute(
+      sql`SELECT max(transaction_date)::text AS last FROM fleet_import_details`,
+    )) as unknown as Array<{ last: string }>;
+    return rows[0]!.last;
+  };
+
+  /** One extra gojek row on partner A's plate. `date` may sit outside the
+   *  fixture month — the partition key is (period_year, period_month), not the
+   *  transaction date, so it still lands in this spec's partition. */
+  const addGojekRow = async (driverName: string, transactionDate: string) => {
+    await database.db.insert(fleetImportDetails).values({
+      importId: fleetImportId,
+      periodYear: YEAR,
+      periodMonth: MONTH,
+      transactionDate,
+      vehiclePlate: PLATE_A,
+      vehiclePlateNorm: PLATE_A_NORM,
+      driverName,
+      amount: -100000,
+      type: 'GoPay Deduction',
+    });
+  };
+
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
@@ -141,9 +179,6 @@ describe('partner driver roster (fleet sync)', () => {
     await agentB.post('/partner/portal/plates').send({ plateNumber: PLATE_B }).expect(201);
 
     // Admin-imported fleet data the sync derives the roster from.
-    const d = (day: number) =>
-      `${YEAR}-${String(MONTH).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
     await ensureDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
     const [imp] = await db
       .insert(fleetImports)
@@ -353,6 +388,123 @@ describe('partner driver roster (fleet sync)', () => {
     expect(again.id).not.toBe(citraId);
   });
 
+  // ---- auto exit detection ("Driver Keluar") ----------------------------------
+
+  it('stamps exitedAt for a driver the import stopped carrying, and leaves current ones alone', async () => {
+    await addGojekRow('Keluar Duluan', d(1));
+    await addGojekRow('Masih Aktif', await gojekHorizon());
+
+    const rows = byName((await listDrivers(agentA)).data);
+    expect(rows.get('KELUAR DULUAN')!.exitedAt).toBe(d(1));
+    expect(rows.get('KELUAR DULUAN')!.resignedAt).toBeNull(); // detection is not a manual resign
+    expect(rows.get('MASIH AKTIF')!.exitedAt).toBeNull();
+
+    // Detected exits are part of the resign list, and `auto` isolates them.
+    const auto = await listDrivers(agentA, '?resigned=true&resignedType=auto');
+    expect(auto.data.map((r) => r.name)).toContain('Keluar Duluan');
+    expect(auto.data.map((r) => r.name)).not.toContain('Masih Aktif');
+    expect(auto.data.every((r) => r.resignedAt === null)).toBe(true);
+
+    // …and it does not leak into the "still on the roster" list.
+    const onRoster = await listDrivers(agentA, '?resigned=false');
+    expect(onRoster.data.map((r) => r.name)).toContain('Masih Aktif');
+    expect(onRoster.data.map((r) => r.name)).not.toContain('Keluar Duluan');
+  });
+
+  it('clears exitedAt by itself once the driver shows up in the import again', async () => {
+    await addGojekRow('Keluar Duluan', await gojekHorizon());
+    const rows = byName((await listDrivers(agentA)).data);
+    expect(rows.get('KELUAR DULUAN')!.exitedAt).toBeNull();
+
+    const auto = await listDrivers(agentA, '?resigned=true&resignedType=auto');
+    expect(auto.data.map((r) => r.name)).not.toContain('Keluar Duluan');
+  });
+
+  // ---- manual registration ------------------------------------------------------
+
+  it('POST /drivers registers a driver by hand with a generated code', async () => {
+    const res = await agentA
+      .post('/partner/portal/drivers')
+      .send({
+        name: 'Manual Manuwara',
+        phone: '0812777666',
+        plateNumber: PLATE_A,
+        address: 'Jl. Kenanga No. 9, Bogor',
+        homeLat: -6.229728,
+        homeLng: 106.689399,
+      })
+      .expect(201);
+    const created = res.body.data as Record<string, unknown>;
+    expect(created.source).toBe('manual');
+    expect(created.driverCode).toBe(`DRV-${String(created.id).padStart(6, '0')}`);
+    expect(created.isActive).toBe(true);
+    expect(created.exitedAt).toBeNull(); // never auto-exited: the import doesn't know them
+    expect(created.homeLat).toBe(-6.229728);
+    expect(created.homeLng).toBe(106.689399);
+    expect(created.documents).toEqual([]);
+
+    // A re-sync must not touch or duplicate the hand-made row.
+    const rows = byName((await listDrivers(agentA)).data);
+    expect(rows.get('MANUAL MANUWARA')!.id).toBe(created.id);
+    expect(rows.get('MANUAL MANUWARA')!.exitedAt).toBeNull();
+  });
+
+  it('rejects a manual registration that collides with an existing driver', async () => {
+    const res = await agentA
+      .post('/partner/portal/drivers')
+      .send({ name: 'manual   MANUWARA' }) // normalizes to the same identity
+      .expect(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+    expect(res.body.error.message).toBe('Nama driver sudah ada');
+  });
+
+  it('validates the manual registration payload', async () => {
+    await agentA.post('/partner/portal/drivers').send({ name: '   ' }).expect(400);
+    await agentA
+      .post('/partner/portal/drivers')
+      .send({ name: 'Plat Asing', plateNumber: 'Z 9999 XX' })
+      .expect(400);
+    // half a coordinate is never a valid pin
+    const halfPin = await agentA
+      .post('/partner/portal/drivers')
+      .send({ name: 'Setengah Titik', homeLat: -6.2 })
+      .expect(400);
+    expect(halfPin.body.error.message).toBe(
+      'Titik lokasi rumah harus berisi lintang dan bujur sekaligus',
+    );
+  });
+
+  // ---- home survey ----------------------------------------------------------------
+
+  it('stores the home-survey address, pin and photo on a synced driver', async () => {
+    const saved = await agentA
+      .patch(`/partner/portal/drivers/${budiId}`)
+      .send({ address: 'Jl. Survey No. 7', homeLat: -6.1751, homeLng: 106.865 })
+      .expect(200);
+    expect(saved.body.data).toMatchObject({
+      address: 'Jl. Survey No. 7',
+      homeLat: -6.1751,
+      homeLng: 106.865,
+    });
+
+    await uploadDocument(agentA, budiId, 'home_survey');
+    const detail = await agentA.get(`/partner/portal/drivers/${budiId}`).expect(200);
+    const survey = (detail.body.data.documents as Array<{ kind: string; url?: string }>).filter(
+      (doc) => doc.kind === 'home_survey',
+    );
+    expect(survey).toHaveLength(1);
+    expect(survey[0]!.url).toBeTruthy();
+
+    // Clearing the pin keeps the address (they are independent inputs).
+    const cleared = await agentA
+      .patch(`/partner/portal/drivers/${budiId}`)
+      .send({ homeLat: null, homeLng: null })
+      .expect(200);
+    expect(cleared.body.data.homeLat).toBeNull();
+    expect(cleared.body.data.homeLng).toBeNull();
+    expect(cleared.body.data.address).toBe('Jl. Survey No. 7');
+  });
+
   it('gates depositReturned behind resignation and the uploaded proof', async () => {
     // not resigned yet
     const notResigned = await agentA
@@ -417,13 +569,22 @@ describe('partner driver roster (fleet sync)', () => {
   });
 
   it('filters: resigned / active / q / plate', async () => {
-    const resigned = await listDrivers(agentA, '?resigned=true');
+    // `resignedType=manual` isolates the partner's own decision from the
+    // detected exits (which depend on the shared import horizon).
+    const resigned = await listDrivers(agentA, '?resigned=true&resignedType=manual');
     expect(resigned.data.map((r) => r.id)).toEqual([budiId]);
 
-    const current = await listDrivers(agentA, '?resigned=false');
-    expect(current.data.every((r) => r.resignedAt === null)).toBe(true);
-    expect(current.data.some((r) => r.id === budiId)).toBe(false);
+    // The unnarrowed resign list is the union of both halves.
+    const allOut = await listDrivers(agentA, '?resigned=true');
+    expect(allOut.data.some((r) => r.id === budiId)).toBe(true);
+    expect(allOut.data.every((r) => r.resignedAt !== null || r.exitedAt !== null)).toBe(true);
 
+    const current = await listDrivers(agentA, '?resigned=false');
+    expect(current.data.every((r) => r.resignedAt === null && r.exitedAt === null)).toBe(true);
+    expect(current.data.some((r) => r.id === budiId)).toBe(false);
+    expect(current.data.map((r) => r.name)).toContain('Masih Aktif');
+
+    // Detection never flips the manual isActive flag — only a resign does.
     const inactive = await listDrivers(agentA, '?active=false');
     expect(inactive.data.map((r) => r.id)).toEqual([budiId]);
 
@@ -457,8 +618,7 @@ describe('partner driver roster (fleet sync)', () => {
     expect(first).not.toBe(second);
   });
 
-  it('exposes no create/delete/resign endpoints for drivers', async () => {
-    await agentA.post('/partner/portal/drivers').send({ name: 'X' }).expect(404);
+  it('exposes no delete/resign endpoints for drivers', async () => {
     await agentA.delete(`/partner/portal/drivers/${budiId}`).expect(404);
     await agentA.post(`/partner/portal/drivers/${budiId}/resign`).expect(404);
     await agentA.get('/partner/portal/driver-registrations').expect(404);

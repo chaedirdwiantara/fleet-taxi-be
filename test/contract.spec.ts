@@ -100,6 +100,7 @@ const EXPECTED_OPERATIONS = [
   'POST /partner/portal/checkpoints/{id}/media/presign',
   'POST /partner/portal/checkpoints/{id}/media/{mediaId}/confirm',
   'POST /partner/portal/deposit-installments',
+  'POST /partner/portal/drivers',
   'POST /partner/portal/drivers/documents/{driverId}/presign',
   'POST /partner/portal/drivers/documents/{driverId}/{documentId}/confirm',
   'POST /partner/portal/fleet/gojek/exceptions',
