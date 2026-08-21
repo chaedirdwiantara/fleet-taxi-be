@@ -28,6 +28,7 @@ import {
   users,
 } from '../src/db/schema';
 import { fleetImportDetails, grabImportDetails } from '../src/db/schema/partitioned';
+import { withDeadlockRetry } from './deadlock';
 
 const RUN = `drv${Date.now()}`;
 const PASSWORD = 'driver-test-pw';
@@ -269,16 +270,18 @@ describe('partner driver roster (fleet sync)', () => {
 
   afterAll(async () => {
     const { db } = database;
-    await db.delete(fleetImports).where(eq(fleetImports.id, fleetImportId));
-    await db.delete(grabImports).where(eq(grabImports.id, grabImportId));
-    await dropDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
-    await dropDetailPartition(database, 'grab_import_details', YEAR, MONTH);
-    await db.delete(drivers).where(inArray(drivers.partnerId, [partnerAId, partnerBId]));
-    await db
-      .delete(partnerPlates)
-      .where(inArray(partnerPlates.partnerId, [partnerAId, partnerBId]));
-    await db.delete(users).where(inArray(users.id, [userAId, userBId]));
-    await db.delete(partners).where(inArray(partners.id, [partnerAId, partnerBId]));
+    await withDeadlockRetry(async () => {
+      await db.delete(fleetImports).where(eq(fleetImports.id, fleetImportId));
+      await db.delete(grabImports).where(eq(grabImports.id, grabImportId));
+      await dropDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
+      await dropDetailPartition(database, 'grab_import_details', YEAR, MONTH);
+      await db.delete(drivers).where(inArray(drivers.partnerId, [partnerAId, partnerBId]));
+      await db
+        .delete(partnerPlates)
+        .where(inArray(partnerPlates.partnerId, [partnerAId, partnerBId]));
+      await db.delete(users).where(inArray(users.id, [userAId, userBId]));
+      await db.delete(partners).where(inArray(partners.id, [partnerAId, partnerBId]));
+    });
     await app.close();
   });
 

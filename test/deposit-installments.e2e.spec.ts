@@ -16,6 +16,7 @@ import { DatabaseService } from '../src/db/database.service';
 import { dropDetailPartition, ensureDetailPartition } from '../src/db/partitions';
 import { fleetImports, partners, roles, userRoles, users } from '../src/db/schema';
 import { fleetImportDetails } from '../src/db/schema/partitioned';
+import { withDeadlockRetry } from './deadlock';
 
 const RUN = `cic${Date.now()}`;
 const PASSWORD = 'cicilan-test-pw';
@@ -124,10 +125,12 @@ describe('deposit installments (cicilan deposit)', () => {
 
   afterAll(async () => {
     const { db } = database;
-    await db.delete(fleetImports).where(eq(fleetImports.id, fleetImportId));
-    await dropDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
-    await db.delete(users).where(eq(users.id, userAId));
-    await db.delete(users).where(eq(users.id, userBId));
+    await withDeadlockRetry(async () => {
+      await db.delete(fleetImports).where(eq(fleetImports.id, fleetImportId));
+      await dropDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
+      await db.delete(users).where(eq(users.id, userAId));
+      await db.delete(users).where(eq(users.id, userBId));
+    });
     await app.close();
   });
 

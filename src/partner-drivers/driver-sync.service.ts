@@ -78,10 +78,9 @@ export class DriverSyncService {
     const norms = plates.map((p) => p.norm);
     if (norms.length === 0) return { inserted: 0, total: 0 };
 
-    const [gojek, grab, horizon] = await Promise.all([
+    const [gojek, grab] = await Promise.all([
       this.gojekCandidates(norms),
       this.grabCandidates(norms),
-      this.importHorizon(),
     ]);
 
     // Merge by nameNorm — gojek wins as `source` when both platforms know the
@@ -131,7 +130,8 @@ export class DriverSyncService {
         );
     }
 
-    await this.refreshExits(partnerId, [...merged.values()], horizon);
+    const candidates = [...merged.values()];
+    await this.refreshExits(partnerId, candidates, await this.importHorizon(candidates));
     return { inserted: inserted.length, total: merged.size };
   }
 
@@ -189,15 +189,27 @@ export class DriverSyncService {
     }
   }
 
-  /** Newest transaction date per platform across ALL imported data. */
-  private async importHorizon(): Promise<ImportHorizon> {
+  /**
+   * Newest transaction date per platform across ALL imported data. Both columns
+   * are indexed on the partitioned parents, so this is a per-partition index
+   * scan rather than a table scan — but a platform nobody in this roster is
+   * known on can't change any verdict, so it is not queried at all (the common
+   * gojek-only fleet never touches the Grab partitions).
+   */
+  private async importHorizon(candidates: LastSeen[]): Promise<ImportHorizon> {
+    const needGojek = candidates.some((c) => c.gojekLastSeen !== null);
+    const needGrab = candidates.some((c) => c.grabLastSeen !== null);
     const [gojek, grab] = await Promise.all([
-      this.database.db
-        .select({ last: sql<string | null>`max(${fleetImportDetails.transactionDate})::text` })
-        .from(fleetImportDetails),
-      this.database.db
-        .select({ last: sql<string | null>`max(${grabImportDetails.date})::text` })
-        .from(grabImportDetails),
+      needGojek
+        ? this.database.db
+            .select({ last: sql<string | null>`max(${fleetImportDetails.transactionDate})::text` })
+            .from(fleetImportDetails)
+        : Promise.resolve([]),
+      needGrab
+        ? this.database.db
+            .select({ last: sql<string | null>`max(${grabImportDetails.date})::text` })
+            .from(grabImportDetails)
+        : Promise.resolve([]),
     ]);
     return { gojek: gojek[0]?.last ?? null, grab: grab[0]?.last ?? null };
   }

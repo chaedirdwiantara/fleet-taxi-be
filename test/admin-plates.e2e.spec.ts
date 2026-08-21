@@ -25,6 +25,7 @@ import {
   users,
 } from '../src/db/schema';
 import { dropDetailPartition, ensureDetailPartition } from '../src/db/partitions';
+import { withDeadlockRetry } from './deadlock';
 
 const RUN = `ap${Date.now().toString(36)}`;
 const PASSWORD = 'admin-plates-pw';
@@ -158,20 +159,22 @@ describe('admin plate registration (/admin/plates)', () => {
 
   afterAll(async () => {
     const { db } = database;
-    await db
-      .delete(adminPlates)
-      .where(
-        inArray(adminPlates.plateNumberNorm, [
-          PLATE_PARTNER,
-          PLATE_ORPHAN,
-          PLATE_LATE,
-          PLATE_TYPED,
-        ]),
-      );
-    await db.delete(fleetImports).where(eq(fleetImports.periodYear, YEAR));
-    await dropDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
-    await db.delete(users).where(inArray(users.id, userIds));
-    await db.delete(partners).where(eq(partners.id, partnerId)); // cascades partner_plates
+    await withDeadlockRetry(async () => {
+      await db
+        .delete(adminPlates)
+        .where(
+          inArray(adminPlates.plateNumberNorm, [
+            PLATE_PARTNER,
+            PLATE_ORPHAN,
+            PLATE_LATE,
+            PLATE_TYPED,
+          ]),
+        );
+      await db.delete(fleetImports).where(eq(fleetImports.periodYear, YEAR));
+      await dropDetailPartition(database, 'fleet_import_details', YEAR, MONTH);
+      await db.delete(users).where(inArray(users.id, userIds));
+      await db.delete(partners).where(eq(partners.id, partnerId)); // cascades partner_plates
+    });
     await app.close();
   });
 
