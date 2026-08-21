@@ -35,11 +35,20 @@ export interface DriverSummary {
   isActive: boolean;
   depositAmount: number;
   resignedAt: string | null;
+  /**
+   * Auto-detected exit date (YYYY-MM-DD) — the last day the driver appeared in
+   * the fleet import, set only while every platform that knows them has moved
+   * on. Independent of `resignedAt`: a driver can be one, the other, or both.
+   */
+  exitedAt: string | null;
   depositReturnStatus: string;
   joinedAt: string;
 }
 
 export interface DriverDetail extends DriverSummary {
+  /** Home-survey pin (WGS84 degrees); null unless the partner recorded one. */
+  homeLat: number | null;
+  homeLng: number | null;
   depositReturnDecidedAt: string | null;
   updatedAt: string;
   documents: DriverDocumentView[];
@@ -72,6 +81,7 @@ export function presentDriverSummary(row: DriverRow): DriverSummary {
     isActive: row.isActive,
     depositAmount: row.depositAmount,
     resignedAt: row.resignedAt?.toISOString() ?? null,
+    exitedAt: row.exitedAt,
     depositReturnStatus: row.depositReturnStatus,
     joinedAt: row.createdAt.toISOString(),
   };
@@ -80,6 +90,8 @@ export function presentDriverSummary(row: DriverRow): DriverSummary {
 export function presentDriverDetail(row: DriverRow, documents: DriverDocumentView[]): DriverDetail {
   return {
     ...presentDriverSummary(row),
+    homeLat: row.homeLat,
+    homeLng: row.homeLng,
     depositReturnDecidedAt: row.depositReturnDecidedAt?.toISOString() ?? null,
     updatedAt: row.updatedAt.toISOString(),
     documents,

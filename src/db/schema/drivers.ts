@@ -3,6 +3,7 @@ import {
   boolean,
   date,
   index,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -12,10 +13,11 @@ import { partners } from './partners';
 
 /**
  * Partner-portal driver roster. Rows are SYNCED from the fleet-monitoring
- * import data (Gojek/Grab) keyed by (partner_id, name_norm); manual edits on
- * the driver edit page fill in completeness (documents, deposit, bank, …) and
- * always win over re-syncs. ONE row per driver across the whole lifecycle:
- * active roster → resigned (resigned_at set) → deposit returned.
+ * import data (Gojek/Grab) keyed by (partner_id, name_norm) or entered by hand
+ * (source `manual`); manual edits on the driver edit page fill in completeness
+ * (documents, deposit, bank, …) and always win over re-syncs. ONE row per
+ * driver across the whole lifecycle: active roster → resigned (resigned_at
+ * set) → deposit returned.
  *
  * The registration-era columns (registration_status, doc-check flags,
  * deposit decision fields) are deliberately kept — dropping them would be a
@@ -38,7 +40,13 @@ export const drivers = pgTable(
     source: text('source').notNull().default('manual'), // gojek | grab | manual
     email: text('email'),
     phone: text('phone'),
-    address: text('address'),
+    address: text('address'), // alamat rumah (survey)
+    // Optional home-survey pin. Kept next to `address` because the driver edit
+    // page turns the pair into ONE map link: coordinates when present (exact),
+    // otherwise a text search on the address. WGS84 degrees — precision 9 /
+    // scale 6 is ±0.11 m, far below what a house survey needs.
+    homeLat: numeric('home_lat', { precision: 9, scale: 6, mode: 'number' }),
+    homeLng: numeric('home_lng', { precision: 9, scale: 6, mode: 'number' }),
     ktpNo: text('ktp_no'),
     simNo: text('sim_no'),
     simExpired: date('sim_expired'), // 'YYYY-MM-DD'
@@ -57,6 +65,14 @@ export const drivers = pgTable(
     depositDecidedAt: timestamp('deposit_decided_at', { withTimezone: true }),
     isActive: boolean('is_active').notNull().default(true),
     resignedAt: timestamp('resigned_at', { withTimezone: true }), // NULL = not resigned
+    /**
+     * DERIVED — auto-detected exit ("Driver Keluar" in the Gojek grid): the
+     * driver's last transaction date when every platform that knows them has
+     * moved past it. Recomputed by DriverSyncService on every roster sync, so a
+     * driver who reappears in a later import is cleared automatically. Never
+     * written by hand — manual resignation is `resigned_at`.
+     */
+    exitedAt: date('exited_at'), // 'YYYY-MM-DD' of the last row seen, NULL = still active
     depositReturnStatus: text('deposit_return_status').notNull().default('none'), // none | waiting | approved | rejected
     depositReturnDecidedAt: timestamp('deposit_return_decided_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -70,6 +86,9 @@ export const drivers = pgTable(
     index('drivers_partner_created_idx').on(t.partnerId, t.createdAt.desc()),
     index('drivers_partner_reg_status_idx').on(t.partnerId, t.registrationStatus),
     index('drivers_partner_resigned_idx').on(t.partnerId, t.resignedAt),
+    // Resign list = manual resign OR auto-detected exit, so both halves of the
+    // OR need their own index.
+    index('drivers_partner_exited_idx').on(t.partnerId, t.exitedAt),
   ],
 );
 
@@ -86,7 +105,7 @@ export const driverDocuments = pgTable(
     driverId: bigint('driver_id', { mode: 'number' })
       .notNull()
       .references(() => drivers.id, { onDelete: 'cascade' }),
-    kind: text('kind').notNull(), // ktp | sim | skck | deposit_proof | deposit_return_proof
+    kind: text('kind').notNull(), // ktp | sim | skck | home_survey | deposit_proof | deposit_return_proof
     storageKey: text('storage_key').notNull().unique(),
     contentType: text('content_type').notNull(), // image/jpeg | image/png | application/pdf
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(), // declared at presign

@@ -4111,10 +4111,24 @@
             "name": "resigned",
             "required": false,
             "in": "query",
+            "description": "true = keluar dari armada (resign manual ATAU terdeteksi keluar dari data import)",
             "schema": {
               "enum": [
                 "true",
                 "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "resignedType",
+            "required": false,
+            "in": "query",
+            "description": "Mempersempit resigned=true: manual = ditandai partner, auto = terdeteksi otomatis",
+            "schema": {
+              "enum": [
+                "manual",
+                "auto"
               ],
               "type": "string"
             }
@@ -4149,6 +4163,34 @@
           }
         ],
         "summary": "Sync the roster from fleet imports, then list own drivers (paginated, filterable)",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "post": {
+        "operationId": "PortalDriversController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDriverDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Register a driver manually (source: manual)",
         "tags": [
           "partner-portal"
         ]
@@ -5114,6 +5156,7 @@
               "ktp",
               "sim",
               "skck",
+              "home_survey",
               "deposit_proof",
               "deposit_return_proof"
             ],
@@ -5140,13 +5183,9 @@
           "sizeBytes"
         ]
       },
-      "UpdateDriverDto": {
+      "CreateDriverDto": {
         "type": "object",
         "properties": {
-          "name": {
-            "type": "string",
-            "example": "Budi Santoso"
-          },
           "email": {
             "type": "string",
             "example": "budi@example.com"
@@ -5157,7 +5196,20 @@
           },
           "address": {
             "type": "string",
-            "example": "Jl. Melati No. 1, Jakarta Selatan"
+            "example": "Jl. Melati No. 1, Jakarta Selatan",
+            "description": "Alamat rumah hasil survey"
+          },
+          "homeLat": {
+            "type": "number",
+            "nullable": true,
+            "example": -6.229728,
+            "description": "Lintang titik rumah (WGS84). Kirim null untuk menghapus titik."
+          },
+          "homeLng": {
+            "type": "number",
+            "nullable": true,
+            "example": 106.689399,
+            "description": "Bujur titik rumah (WGS84). Kirim null untuk menghapus titik."
           },
           "ktpNo": {
             "type": "string",
@@ -5193,6 +5245,82 @@
             "type": "boolean",
             "example": true,
             "description": "Aktif/nonaktifkan driver"
+          },
+          "name": {
+            "type": "string",
+            "example": "Budi Santoso"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateDriverDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "budi@example.com"
+          },
+          "phone": {
+            "type": "string",
+            "example": "0812xxxxxxx"
+          },
+          "address": {
+            "type": "string",
+            "example": "Jl. Melati No. 1, Jakarta Selatan",
+            "description": "Alamat rumah hasil survey"
+          },
+          "homeLat": {
+            "type": "number",
+            "nullable": true,
+            "example": -6.229728,
+            "description": "Lintang titik rumah (WGS84). Kirim null untuk menghapus titik."
+          },
+          "homeLng": {
+            "type": "number",
+            "nullable": true,
+            "example": 106.689399,
+            "description": "Bujur titik rumah (WGS84). Kirim null untuk menghapus titik."
+          },
+          "ktpNo": {
+            "type": "string",
+            "example": "3174xxxxxxxxxxxx",
+            "description": "Nomor KTP"
+          },
+          "simNo": {
+            "type": "string",
+            "example": "1234-5678-901234",
+            "description": "Nomor SIM"
+          },
+          "simExpired": {
+            "type": "string",
+            "example": "2027-03-15",
+            "description": "Masa berlaku SIM (YYYY-MM-DD)"
+          },
+          "plateNumber": {
+            "type": "string",
+            "example": "B 1793 SCP",
+            "description": "Plat unit yang dioperasikan (harus plat terdaftar partner)"
+          },
+          "bankAccount": {
+            "type": "string",
+            "example": "BCA 1234567890 a.n. Budi",
+            "description": "Rekening driver"
+          },
+          "depositAmount": {
+            "type": "number",
+            "example": 2500000,
+            "description": "Deposit (rupiah bulat)"
+          },
+          "isActive": {
+            "type": "boolean",
+            "example": true,
+            "description": "Aktif/nonaktifkan driver"
+          },
+          "name": {
+            "type": "string",
+            "example": "Budi Santoso"
           },
           "resigned": {
             "type": "boolean",

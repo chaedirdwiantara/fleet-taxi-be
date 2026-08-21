@@ -18,9 +18,26 @@ import {
   presentDriverSummary,
 } from './driver-presenter';
 import { normalizeDriverName } from './driver.constants';
+import { CreateDriverDto } from './dto/create-driver.dto';
+import { DriverMasterDataDto } from './dto/driver-master-data.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 
 type Paginated<T> = { data: T[]; meta: { page: number; pageSize: number; total: number } };
+
+/** How a driver left the fleet — narrows the `resigned=true` list. */
+export type ResignedType = 'manual' | 'auto';
+
+export interface ListDriversOptions extends Pagination {
+  q?: string;
+  plate?: string;
+  active?: string;
+  /** 'true' = out of the fleet (manual resign OR auto-detected exit). */
+  resigned?: string;
+  resignedType?: string;
+}
+
+/** Resolved plate pair, or `undefined` when the caller left the plate alone. */
+type PlatePatch = { plateNumber: string | null; plateNumberNorm: string | null };
 
 /**
  * Postgres unique_violation on the (partner_id, name_norm) sync key. Drizzle
@@ -36,10 +53,11 @@ function isUniqueViolation(err: unknown): boolean {
 
 /**
  * Partner driver roster, row-scoped to the session partnerId (requirePartner).
- * Rows are created by DriverSyncService from the fleet import data; this
- * service covers listing (all lifecycle stages), detail, and the edit page:
- * master-data completeness plus the resign / deposit-return lifecycle.
- * There is deliberately no create or delete endpoint.
+ * Rows come from DriverSyncService (fleet import data) or from manual
+ * registration (`source: 'manual'`); this service covers listing (all lifecycle
+ * stages), detail, creation, and the edit page: master-data completeness plus
+ * the resign / deposit-return lifecycle. There is deliberately no delete
+ * endpoint — a driver who leaves is resigned, never erased.
  */
 @Injectable()
 export class PartnerDriversService {
@@ -50,7 +68,7 @@ export class PartnerDriversService {
 
   async listDrivers(
     partnerId: number,
-    opts: Pagination & { q?: string; plate?: string; active?: string; resigned?: string },
+    opts: ListDriversOptions,
   ): Promise<Paginated<DriverSummary>> {
     const conditions = [
       eq(drivers.partnerId, partnerId),
@@ -63,8 +81,11 @@ export class PartnerDriversService {
     if (opts.active === 'true' || opts.active === 'false') {
       conditions.push(eq(drivers.isActive, opts.active === 'true'));
     }
-    if (opts.resigned === 'true') conditions.push(isNotNull(drivers.resignedAt));
-    else if (opts.resigned === 'false') conditions.push(isNull(drivers.resignedAt));
+    const outOfFleet = opts.resigned === 'true';
+    if (outOfFleet) conditions.push(this.resignedCondition(opts.resignedType));
+    else if (opts.resigned === 'false') {
+      conditions.push(isNull(drivers.resignedAt), isNull(drivers.exitedAt));
+    }
 
     const where = and(...conditions);
     const [rows, [count]] = await Promise.all([
@@ -72,7 +93,14 @@ export class PartnerDriversService {
         .select()
         .from(drivers)
         .where(where)
-        .orderBy(desc(drivers.createdAt))
+        // The resign list is read newest-departure first; the roster keeps its
+        // join order. GREATEST ignores NULLs in Postgres, so it yields whichever
+        // of the two dates a row actually has (ordering only — no TZ math).
+        .orderBy(
+          outOfFleet
+            ? sql`greatest(${drivers.resignedAt}::date, ${drivers.exitedAt}) desc nulls last`
+            : desc(drivers.createdAt),
+        )
         .limit(opts.pageSize)
         .offset((opts.page - 1) * opts.pageSize),
       this.database.db
@@ -91,6 +119,46 @@ export class PartnerDriversService {
     return presentDriverDetail(row, await this.documents.viewsForDriver(id));
   }
 
+  /**
+   * Manual registration. Shares the (partner_id, name_norm) identity with the
+   * fleet sync on purpose: registering a driver the import already knows is a
+   * 409 rather than a duplicate, and a driver registered by hand before the
+   * first import simply absorbs the later sync instead of doubling up.
+   */
+  async createDriver(partnerId: number, dto: CreateDriverDto): Promise<DriverDetail> {
+    const plate = await this.resolvePlate(partnerId, dto.plateNumber);
+    const name = dto.name.trim();
+    if (name === '') throw new BadRequestException('Nama driver wajib diisi');
+    this.assertHomePinComplete(dto, { homeLat: null, homeLng: null });
+
+    let id: number;
+    try {
+      const [row] = await this.database.db
+        .insert(drivers)
+        .values({
+          partnerId,
+          name,
+          nameNorm: normalizeDriverName(name),
+          source: 'manual',
+          registrationStatus: 'approved', // legacy column; roster rows are live
+          ...this.masterDataPatch(dto, plate),
+          isActive: dto.isActive ?? true,
+        })
+        .returning({ id: drivers.id });
+      id = row!.id;
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new ConflictException('Nama driver sudah ada');
+      throw err;
+    }
+
+    // Same rule as the sync (formatDriverCode): DRV- + zero-padded row id.
+    await this.database.db
+      .update(drivers)
+      .set({ driverCode: sql`'DRV-' || lpad(${drivers.id}::text, 6, '0')` })
+      .where(eq(drivers.id, id));
+    return this.driverDetail(partnerId, id);
+  }
+
   async updateDriver(partnerId: number, id: number, dto: UpdateDriverDto): Promise<DriverDetail> {
     const row = await this.ownedDriver(partnerId, id);
 
@@ -98,6 +166,7 @@ export class PartnerDriversService {
       dto.plateNumber !== undefined
         ? await this.resolvePlate(partnerId, dto.plateNumber)
         : undefined;
+    this.assertHomePinComplete(dto, row);
 
     // Lifecycle: resign / un-resign, and the deposit-return decision.
     const lifecycle = this.lifecyclePatch(row, dto);
@@ -116,19 +185,7 @@ export class PartnerDriversService {
             name: dto.name.trim(),
             nameNorm: normalizeDriverName(dto.name),
           }),
-          ...(dto.email !== undefined && { email: dto.email.trim() || null }),
-          ...(dto.phone !== undefined && { phone: dto.phone.trim() || null }),
-          ...(dto.address !== undefined && { address: dto.address.trim() || null }),
-          ...(dto.ktpNo !== undefined && { ktpNo: dto.ktpNo.trim() || null }),
-          ...(dto.simNo !== undefined && { simNo: dto.simNo.trim() || null }),
-          ...(dto.simExpired !== undefined && { simExpired: dto.simExpired || null }),
-          ...(plate !== undefined && {
-            plateNumber: plate.plateNumber,
-            plateNumberNorm: plate.plateNumberNorm,
-          }),
-          ...(dto.bankAccount !== undefined && { bankAccount: dto.bankAccount.trim() || null }),
-          ...(dto.depositAmount !== undefined && { depositAmount: dto.depositAmount }),
-          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+          ...this.masterDataPatch(dto, plate),
           ...lifecycle,
           updatedAt: new Date(),
         })
@@ -141,6 +198,66 @@ export class PartnerDriversService {
   }
 
   // ---- helpers --------------------------------------------------------------
+
+  /**
+   * Master-data half of a create/update body → column patch. Only keys present
+   * on the DTO are emitted, so a PATCH never clobbers untouched columns; an
+   * empty string clears a text column and `null` clears a coordinate.
+   * `plate` is pre-resolved by the caller (it needs the allowlist lookup).
+   */
+  private masterDataPatch(
+    dto: DriverMasterDataDto,
+    plate: PlatePatch | undefined,
+  ): Partial<typeof drivers.$inferInsert> {
+    return {
+      ...(dto.email !== undefined && { email: dto.email.trim() || null }),
+      ...(dto.phone !== undefined && { phone: dto.phone.trim() || null }),
+      ...(dto.address !== undefined && { address: dto.address.trim() || null }),
+      ...(dto.homeLat !== undefined && { homeLat: dto.homeLat }),
+      ...(dto.homeLng !== undefined && { homeLng: dto.homeLng }),
+      ...(dto.ktpNo !== undefined && { ktpNo: dto.ktpNo.trim() || null }),
+      ...(dto.simNo !== undefined && { simNo: dto.simNo.trim() || null }),
+      ...(dto.simExpired !== undefined && { simExpired: dto.simExpired || null }),
+      ...(plate !== undefined && {
+        plateNumber: plate.plateNumber,
+        plateNumberNorm: plate.plateNumberNorm,
+      }),
+      ...(dto.bankAccount !== undefined && { bankAccount: dto.bankAccount.trim() || null }),
+      ...(dto.depositAmount !== undefined && { depositAmount: dto.depositAmount }),
+      ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+    };
+  }
+
+  /**
+   * The home pin is one value in two columns: the FE only ever writes both or
+   * clears both, so half a coordinate is a bug, not a partial save. Checked
+   * against the resulting row so a PATCH that touches only one column still has
+   * to end up consistent.
+   */
+  private assertHomePinComplete(
+    dto: DriverMasterDataDto,
+    current: { homeLat: number | null; homeLng: number | null },
+  ): void {
+    const lat = dto.homeLat !== undefined ? dto.homeLat : current.homeLat;
+    const lng = dto.homeLng !== undefined ? dto.homeLng : current.homeLng;
+    if ((lat === null) !== (lng === null)) {
+      throw new BadRequestException('Titik lokasi rumah harus berisi lintang dan bujur sekaligus');
+    }
+  }
+
+  /**
+   * "Out of the fleet" = manually resigned OR auto-detected as exited from the
+   * import data — the two halves of the Driver Resign list. `resignedType`
+   * narrows to one of them; `auto` deliberately excludes rows that were also
+   * resigned by hand, so the two filters partition the list.
+   */
+  private resignedCondition(resignedType: string | undefined): SQL {
+    if (resignedType === 'manual') return isNotNull(drivers.resignedAt);
+    if (resignedType === 'auto') {
+      return and(isNotNull(drivers.exitedAt), isNull(drivers.resignedAt))!;
+    }
+    return or(isNotNull(drivers.resignedAt), isNotNull(drivers.exitedAt))!;
+  }
 
   /**
    * `resigned` / `depositReturned` toggles → column patch.
