@@ -3,7 +3,7 @@ import { SQL, and, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
 import { driverRowKey, type MonitoringMode } from '../common/util/monitoring-mode';
 import { clampDayWindow, type DayWindow } from '../common/util/period';
 import { normalizePlate } from '../common/util/plate';
-import { byteCompare, compareVehicleType } from '../common/util/sort';
+import { byteCompare } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
 import { normalizeDriverName } from '../partner-drivers/driver.constants';
 import { fleetExceptions, fleetImportDetails, fleetTargets, rentals } from '../db/schema';
@@ -17,6 +17,7 @@ import {
   RawManualRow,
 } from './gojek-grid.types';
 import { buildOutstandingBreakdown, type OutstandingSlice } from './outstanding-breakdown';
+import { compareGojekRows } from './row-order';
 import { billedWindow, dailyTargetFrom } from './target-window';
 
 /**
@@ -693,28 +694,9 @@ export class GojekGridService {
       );
     }
 
-    // Reading order: still-here first, then [Rental Partner on admin] → vehicle
-    // Type A→Z → driver name.
-    //
-    // Rows whose subject left the fleet sink to the bottom as one block. They
-    // still have to be readable (their balance rarely lands on zero the day they
-    // go), but they are not part of the fleet you are steering — interleaving
-    // them chops the active roster into fragments that cannot be compared
-    // plate-to-plate. Inside each block the order below is unchanged.
-    // Type is what a reader compares one plate to another by, so the fleet is
-    // listed model by model — inside a partner on the admin grid (whose Rental
-    // Partner column is rowspan-merged and must stay contiguous), and straight
-    // away on the partner portal, which has no such column.
-    // Driver rows carry no Type — a person is not one model — so the middle key
-    // is skipped there and the legacy name order stands.
-    // (legacy strcmp otherwise; the region_name tiebreaker is intentionally
-    // dropped — region resolution is out of R1 scope)
-    rows.sort(
-      (a, b) =>
-        Number(a.isExited) - Number(b.isExited) ||
-        (filters.groupByRentalPartner ? byteCompare(a.rentalPartner, b.rentalPartner) : 0) ||
-        (byDriver ? 0 : compareVehicleType(a.vehicleType, b.vehicleType)) ||
-        byteCompare(a.driverName, b.driverName),
+    // See compareGojekRows: exited subjects last, then the reading order.
+    rows.sort((a, b) =>
+      compareGojekRows(a, b, { groupByRentalPartner: filters.groupByRentalPartner, byDriver }),
     );
 
     // table totals over the fully filtered set (legacy table_* values)

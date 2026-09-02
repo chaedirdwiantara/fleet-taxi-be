@@ -593,15 +593,16 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
   });
 
   it('sinks rows whose subject left the fleet to the bottom of the table', async () => {
-    // G7771KA is exited (see the driver-keluar spec below); it must not sit
-    // between active rows, whatever the partner/type/name order would say.
+    // Which plates read as exited depends on the newest transaction date in the
+    // WHOLE table, so a shared test database decides how many there are. The
+    // invariant does not care: wherever the split falls, no active row may
+    // appear after an exited one. (compareGojekRows.spec pins the rule itself
+    // against a fixed set of rows.)
     for (const mode of ['plate', 'driver'] as const) {
       const grid = await gojek.buildGrid(MONTH, YEAR, { mode });
       const flags = grid.rows.map((r) => r.isExited);
-      expect(flags).toContain(true);
-      expect(flags).toContain(false);
-      // no active row may appear after an exited one
-      expect(flags.indexOf(true)).toBe(flags.lastIndexOf(false) + 1);
+      expect(flags.length).toBeGreaterThan(0);
+      expect(flags).toEqual([...flags].sort((a, b) => Number(a) - Number(b)));
     }
   });
 
