@@ -3,7 +3,7 @@ import { SQL, and, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
 import { driverRowKey, type MonitoringMode } from '../common/util/monitoring-mode';
 import { clampDayWindow, type DayWindow } from '../common/util/period';
 import { normalizePlate } from '../common/util/plate';
-import { byteCompare, compareVehicleType } from '../common/util/sort';
+import { byteCompare } from '../common/util/sort';
 import { DatabaseService } from '../db/database.service';
 import { normalizeDriverName } from '../partner-drivers/driver.constants';
 import { fleetExceptions, fleetImportDetails, fleetTargets, rentals } from '../db/schema';
@@ -17,6 +17,7 @@ import {
   RawManualRow,
 } from './gojek-grid.types';
 import { buildOutstandingBreakdown, type OutstandingSlice } from './outstanding-breakdown';
+import { compareGojekRows } from './row-order';
 import { billedWindow, dailyTargetFrom } from './target-window';
 
 /**
@@ -49,7 +50,6 @@ interface CumulativeStats {
   monthTargetToDay?: number;
   monthPaidToDay?: number;
   windowTarget?: number;
-  windowPaid?: number;
 }
 
 /**
@@ -304,6 +304,7 @@ export class GojekGridService {
           duePlateDays: new Map(),
           outstanding: 0,
           outstandingMonth: 0,
+          monthBalanceDelta: 0,
           isExited: false,
           exitedLastSeen: null,
           firstSeen: null,
@@ -556,7 +557,7 @@ export class GojekGridService {
       // controls whether the money counts toward the month's omset).
       const cum = cumulativeMap.get(statsKey);
       v.outstanding = (cum?.cumulativeTarget ?? 0) - (cum?.cumulativePaid ?? 0);
-      v.outstandingMonth = (cum?.monthTarget ?? 0) - (cum?.monthPaid ?? 0);
+      v.monthBalanceDelta = (cum?.monthTarget ?? 0) - (cum?.monthPaid ?? 0);
       // Same rows, read per contributor and per month — so `total` here is
       // `outstanding` above, arrived at from the other direction.
       if (sliceMap) {
@@ -566,16 +567,21 @@ export class GojekGridService {
         v.monthTargetToDay = cum?.monthTargetToDay ?? 0;
         v.monthPaidToDay = cum?.monthPaidToDay ?? 0;
         v.windowTarget = cum?.windowTarget ?? 0;
-        v.windowPaid = cum?.windowPaid ?? 0;
       }
 
-      // The obligation IS the billed dues — the same `month_target` slice that
-      // produced outstandingMonth above, so the two columns can never disagree.
-      // Nothing is extrapolated past what the import actually billed: days that
-      // have not elapsed, have not been imported, or predate the plate's first
-      // due row simply contribute nothing.
+      // The obligation IS the billed dues. Nothing is extrapolated past what the
+      // import actually billed: days that have not elapsed, have not been
+      // imported, or predate the plate's first due row simply contribute nothing.
       v.dailyTarget = dailyTargetFrom(v.dailyDue, manualTarget);
       v.calculatedTarget = cum?.monthTarget ?? 0;
+
+      // "Outstanding Bln Ini" is the shortfall between the two columns beside
+      // it, so it is derived from exactly those two numbers and nothing else.
+      // The cumulative window (monthBalanceDelta) answers a different question
+      // and is deliberately NOT used here — it credits manual payments flagged
+      // "tidak masuk setoran" and drops waived days, so it never reconciles
+      // against the Total Due / Total Deduction printed on the same row.
+      v.outstandingMonth = v.calculatedTarget - v.totalDeduction;
       // A day is waived only when EVERY plate that billed the row that day was
       // waived — precisely the rows the SQL dropped. In plate mode there is only
       // ever one such plate, so this reduces to the plate's own waived set.
@@ -688,20 +694,9 @@ export class GojekGridService {
       );
     }
 
-    // Reading order: [Rental Partner on admin] → vehicle Type A→Z → driver name.
-    // Type is what a reader compares one plate to another by, so the fleet is
-    // listed model by model — inside a partner on the admin grid (whose Rental
-    // Partner column is rowspan-merged and must stay contiguous), and straight
-    // away on the partner portal, which has no such column.
-    // Driver rows carry no Type — a person is not one model — so the middle key
-    // is skipped there and the legacy name order stands.
-    // (legacy strcmp otherwise; the region_name tiebreaker is intentionally
-    // dropped — region resolution is out of R1 scope)
-    rows.sort(
-      (a, b) =>
-        (filters.groupByRentalPartner ? byteCompare(a.rentalPartner, b.rentalPartner) : 0) ||
-        (byDriver ? 0 : compareVehicleType(a.vehicleType, b.vehicleType)) ||
-        byteCompare(a.driverName, b.driverName),
+    // See compareGojekRows: exited subjects last, then the reading order.
+    rows.sort((a, b) =>
+      compareGojekRows(a, b, { groupByRentalPartner: filters.groupByRentalPartner, byDriver }),
     );
 
     // table totals over the fully filtered set (legacy table_* values)
@@ -714,22 +709,24 @@ export class GojekGridService {
     let totalOutstandingToDay = 0;
     let totalOutstandingMonthToDay = 0;
     let totalWindowDue = 0;
-    let totalWindowDelta = 0;
     for (const r of rows) {
       totalDeduction += r.totalDeduction;
       totalCalculatedTarget += r.calculatedTarget;
       // Mirrors totalCalculatedTarget: the billed obligation, exited rows included.
       if (dayWindow !== undefined) totalWindowDue += r.windowTarget ?? 0;
-      // exited plates report under outstandingDriverKeluar, not the main total
+      // Same partition as the two columns it sits under, so the TOTAL line
+      // cross-foots: a row that was billed and paid inside this month belongs in
+      // the month's shortfall whether or not its subject has since left.
+      totalOutstandingMonth += r.outstandingMonth;
+      // The all-time BALANCE is the one that is partitioned: exited subjects
+      // report under Outstanding Driver Keluar, never in the main total.
       if (!r.isExited) {
         totalOutstanding += r.outstanding;
-        totalOutstandingMonth += r.outstandingMonth;
         if (dayWindow !== undefined) {
           // prior-months balance + the month's delta truncated at the window end
           const monthDeltaToDay = (r.monthTargetToDay ?? 0) - (r.monthPaidToDay ?? 0);
-          totalOutstandingToDay += r.outstanding - r.outstandingMonth + monthDeltaToDay;
+          totalOutstandingToDay += r.outstanding - r.monthBalanceDelta + monthDeltaToDay;
           totalOutstandingMonthToDay += monthDeltaToDay;
-          totalWindowDelta += (r.windowTarget ?? 0) - (r.windowPaid ?? 0);
         }
       }
       for (const [d, val] of Object.entries(r.dailyCountedData)) {
@@ -771,7 +768,6 @@ export class GojekGridService {
               totalOutstandingToDay,
               totalOutstandingMonthToDay,
               totalWindowDue,
-              totalWindowDelta,
             },
           }
         : {}),
@@ -815,7 +811,6 @@ export class GojekGridService {
               totalOutstandingToDay: 0,
               totalOutstandingMonthToDay: 0,
               totalWindowDue: 0,
-              totalWindowDelta: 0,
             },
           }
         : {}),
@@ -1088,13 +1083,7 @@ export class GojekGridService {
              AND d.transaction_date <= ${windowEnd}::date
              AND d.type ILIKE '%due%' THEN ABS(d.amount)
             ELSE 0
-        END)::bigint AS window_target,
-        SUM(CASE
-            WHEN d.transaction_date >= ${windowStart}::date
-             AND d.transaction_date <= ${windowEnd}::date
-             AND (d.type ILIKE '%deduction%' OR d.type ILIKE '%manual payment%') THEN ABS(d.amount)
-            ELSE 0
-        END)::bigint AS window_paid`
+        END)::bigint AS window_target`
         : sql``;
 
     const result = await this.database.db.execute(sql`
@@ -1129,7 +1118,6 @@ export class GojekGridService {
               monthTargetToDay: Number(row.month_target_to_day),
               monthPaidToDay: Number(row.month_paid_to_day),
               windowTarget: Number(row.window_target),
-              windowPaid: Number(row.window_paid),
             }
           : {}),
       });

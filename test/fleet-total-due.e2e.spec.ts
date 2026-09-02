@@ -180,8 +180,8 @@ describe('Total Due = Σ imported dues', () => {
     expect(row.billToDay).toBe(24);
     expect(row.dailyTarget).toBe(423_000);
     expect(row.minDay).toBe(21);
-    // fully settled: the gap and the month's outstanding both land on zero
-    expect(row.totalDeduction - row.calculatedTarget).toBe(0);
+    // fully settled: billed and collected match, so the month's outstanding is 0
+    expect(row.totalDeduction).toBe(row.calculatedTarget);
     expect(row.outstandingMonth).toBe(0);
     expect(grid.totalCalculatedTarget).toBe(1_692_000);
   });
@@ -217,8 +217,7 @@ describe('Total Due = Σ imported dues', () => {
 
     expect(row.calculatedTarget).toBe(400_000 * 10); // every billed day still counts
     expect(row.totalDeduction).toBe(0);
-    expect(row.totalDeduction - row.calculatedTarget).toBe(-4_000_000); // debt stays visible
-    expect(row.outstandingMonth).toBe(4_000_000);
+    expect(row.outstandingMonth).toBe(4_000_000); // debt stays visible
   });
 
   it('stops billing an exited plate at its last billed day, not at month end', async () => {
@@ -242,6 +241,12 @@ describe('Total Due = Σ imported dues', () => {
     expect(row.billToDay).toBe(3);
     // the marker itself still follows the legacy rule: money on d2 hides it
     expect(row.exceptions[2]).toBeUndefined();
+    // Outstanding Bln Ini reads the row as printed: Total Deduction counts the
+    // waived day's 500.000 as setoran (it is money in), Total Due does not bill
+    // it — so the visible shortfall is 500.000, not the balance window's
+    // 1.000.000. Reconciling against the row the reader sees is the contract.
+    expect(row.totalDeduction).toBe(500_000);
+    expect(row.outstandingMonth).toBe(500_000);
   });
 
   it('keeps the TS-side per-day dues in step with the SQL-side total', async () => {

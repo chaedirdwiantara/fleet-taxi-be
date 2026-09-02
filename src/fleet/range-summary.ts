@@ -28,10 +28,11 @@ export interface RangePartnerSliceDto {
 
 /**
  * Aggregates for one date range. `totalDeduction`/`totalDue` are PERIOD figures
- * — what the range itself collected and billed. `outstandingAsOf` is a BALANCE,
- * which only exists relative to a moment: it is the debt as it stood at the end
- * of `toDate`, carried over from the very first import, and `outstandingDelta`
- * is how much of it this range added (positive) or settled (negative).
+ * — what the range itself collected and billed — and `outstandingDelta` is the
+ * shortfall between them: what the range billed but did not collect.
+ * `outstandingAsOf` is a BALANCE, which only exists relative to a moment: the
+ * debt as it stood at the end of `toDate`, carried over from the very first
+ * import.
  */
 export interface RangeSummaryDto {
   fromDate: string;
@@ -60,7 +61,6 @@ function businessDate(year: number, month: number, day: number): string {
 export function combineGojekRange(grids: GojekGridResult[], range: DateRange): RangeSummaryDto {
   let totalDeduction = 0;
   let totalDue = 0;
-  let outstandingDelta = 0;
   // A balance is cumulative, so only the LAST month's as-of figure is the
   // answer — the earlier months are already folded into it.
   let outstandingAsOf = 0;
@@ -77,7 +77,6 @@ export function combineGojekRange(grids: GojekGridResult[], range: DateRange): R
       daily.push({ date: businessDate(grid.year, grid.month, day), total });
     }
     totalDue += window.totalWindowDue;
-    outstandingDelta += window.totalWindowDelta;
     outstandingAsOf = window.totalOutstandingToDay;
 
     for (const row of grid.rows) {
@@ -101,7 +100,10 @@ export function combineGojekRange(grids: GojekGridResult[], range: DateRange): R
     totalDeduction,
     totalDue,
     outstandingAsOf,
-    outstandingDelta,
+    // The range's own shortfall, read off the two period figures beside it —
+    // the same rule the month card and the table's Outstanding Bln Ini follow,
+    // so the caption can never contradict the two numbers above it.
+    outstandingDelta: totalDue - totalDeduction,
     charts: { daily, byPartner },
   };
 }
