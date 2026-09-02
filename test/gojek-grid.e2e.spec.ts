@@ -325,8 +325,13 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     // bebas-setoran days entirely: 950000 − (400000 + 100000 + 50000) = 400000
     // (the day-5 480000 deduction sits on a bebas-setoran day → not credited)
     expect(row!.outstanding).toBe(400000);
-    // only month of data → the month delta equals the cumulative balance
-    expect(row!.outstandingMonth).toBe(400000);
+    // "Outstanding Bln Ini" is the shortfall between the two columns printed
+    // beside it: billed 950000, collected 980000 → 30000 more came in than was
+    // billed. It deliberately does NOT equal the balance delta above: the
+    // day-5 480000 lands on a bebas-setoran day, which the balance window drops
+    // from both sides but the Total Deduction column still counts as setoran.
+    expect(row!.outstandingMonth).toBe(row!.calculatedTarget - row!.totalDeduction);
+    expect(row!.outstandingMonth).toBe(-30000);
     // daily cells
     expect(row!.dailyData[7]).toBe(50000); // display
     expect(row!.dailyCountedData[7]).toBe(0); // uncounted
@@ -409,6 +414,8 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     expect(row!.billToDay).toBeNull();
     // no due rows ever → cumulative outstanding = 0 − 300000 (overpaid credit)
     expect(row!.outstanding).toBe(-300000);
+    // nothing billed, 300000 collected → the month is 300000 to the good
+    expect(row!.outstandingMonth).toBe(row!.calculatedTarget - row!.totalDeduction);
     expect(row!.outstandingMonth).toBe(-300000);
   });
 
@@ -567,6 +574,35 @@ describe('gojek grid math (ported 1:1 from legacy getIndex)', () => {
     });
     expect(none.rows).toHaveLength(0);
     expect(none.totalEarnings).toBe(0);
+  });
+
+  it('reconciles Outstanding Bln Ini against the two columns beside it, row and TOTAL', async () => {
+    // The whole point of the column: a reader can verify it by subtracting the
+    // two figures printed on the same line, in every row AND in the TOTAL —
+    // which also means exited rows stay in the month figure (they were billed
+    // and they paid inside this month; only the all-time BALANCE is partitioned).
+    const grid = await gojek.buildGrid(MONTH, YEAR);
+    expect(grid.rows.length).toBeGreaterThan(0);
+    for (const row of grid.rows) {
+      expect(row.outstandingMonth).toBe(row.calculatedTarget - row.totalDeduction);
+    }
+    expect(grid.totalOutstandingMonth).toBe(grid.totalCalculatedTarget - grid.totalDeduction);
+    expect(grid.totalOutstandingMonth).toBe(
+      grid.rows.reduce((sum, r) => sum + r.outstandingMonth, 0),
+    );
+  });
+
+  it('sinks rows whose subject left the fleet to the bottom of the table', async () => {
+    // G7771KA is exited (see the driver-keluar spec below); it must not sit
+    // between active rows, whatever the partner/type/name order would say.
+    for (const mode of ['plate', 'driver'] as const) {
+      const grid = await gojek.buildGrid(MONTH, YEAR, { mode });
+      const flags = grid.rows.map((r) => r.isExited);
+      expect(flags).toContain(true);
+      expect(flags).toContain(false);
+      // no active row may appear after an exited one
+      expect(flags.indexOf(true)).toBe(flags.lastIndexOf(false) + 1);
+    }
   });
 
   it('scopePlates restricts the grid to an allowlist (partner scoping primitive)', async () => {

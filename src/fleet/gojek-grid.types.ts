@@ -77,9 +77,20 @@ export interface GojekVehicleRow {
   // the END of the selected month — a past month shows the balance as it stood
   // then. Negative = credit (overpayment carried forward).
   outstanding: number;
-  // The selected month's own delta: outstanding === previous-month outstanding
-  // + outstandingMonth by construction.
+  // "Outstanding Bln Ini" — the month's own shortfall, read straight off the two
+  // columns printed beside it: calculatedTarget − totalDeduction. Positive =
+  // still short this month, negative = paid more than was billed. Deriving it
+  // from the displayed pair is the whole point: any other basis (see
+  // monthBalanceDelta) silently disagrees with the row it sits on.
   outstandingMonth: number;
+  // The same month's slice of the CUMULATIVE balance window
+  // (month_target − month_paid). NOT presented: it answers a different question
+  // — how much the month moved the running balance, crediting manual payments
+  // flagged "tidak masuk setoran" and skipping waived days — which is why it
+  // does not reconcile against Total Due / Total Deduction. Kept because
+  // `outstanding` minus this is the balance carried in from earlier months,
+  // which is how a date range's as-of balance is assembled.
+  monthBalanceDelta: number;
   // Why `outstanding` is what it is — who contributed and which months moved it
   // (see outstanding-breakdown.ts). Present only when buildGrid was asked for it
   // (`includeOutstandingBreakdown`); its `total` equals `outstanding`.
@@ -91,7 +102,6 @@ export interface GojekVehicleRow {
   monthTargetToDay?: number;
   monthPaidToDay?: number;
   windowTarget?: number;
-  windowPaid?: number;
   // Driver keluar: the plate stopped appearing in imports (its all-time last
   // transaction date is older than the newest import date anywhere). Reappearing
   // in a later import automatically clears the flag.
@@ -138,7 +148,12 @@ export interface GojekGridResult {
   totalDeduction: number;
   totalCalculatedTarget: number;
   totalOutstanding: number; // active (non-exited) rows only — cumulative ≤ selected month
-  totalOutstandingMonth: number; // active rows only — the selected month's delta
+  // Σ outstandingMonth over ALL rows — i.e. totalCalculatedTarget −
+  // totalDeduction, so the TOTAL line cross-foots with the two columns it sits
+  // under. Exited rows are included here (unlike totalOutstanding): they were
+  // billed and they paid inside this month, so the month's shortfall is theirs
+  // too; only the all-time BALANCE is partitioned out to Outstanding Driver Keluar.
+  totalOutstandingMonth: number;
   // Unprocessed Manual Payment rows without a plate (admin queue) + their sum.
   // Always empty under partner scoping (an unplated row can't match a scope).
   rawRows: RawManualRow[];
@@ -166,9 +181,6 @@ export interface GojekGridResult {
     totalOutstandingMonthToDay: number;
     // Σ due billed inside the window over ALL rows — mirrors totalCalculatedTarget.
     totalWindowDue: number;
-    // Σ (due − paid) inside the window, active rows only — mirrors
-    // totalOutstandingMonth. The window's own contribution to the balance.
-    totalWindowDelta: number;
   };
 }
 

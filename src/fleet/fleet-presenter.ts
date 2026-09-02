@@ -85,16 +85,18 @@ export interface FleetRowDto {
     // bebas-setoran and Rental Monitoring days waived. Never extrapolated to
     // days that have not elapsed or were never billed.
     calculatedTarget: number;
-    gap: number;
     // The span calculatedTarget covers, so the UI can explain the figure
     // ("21–24 · 4 hari"). billedDays === 0 → nothing billed, from/to null.
     billedDays: number;
     billFromDay: number | null;
     billToDay: number | null;
     // Cumulative balance (Σ due − Σ paid) from the plate's first imported row
-    // up to the END of the selected month; outstandingMonth is that month's
-    // own delta (outstanding = previous-month outstanding + outstandingMonth).
+    // up to the END of the selected month.
     outstanding: number;
+    // "Outstanding Bln Ini" — calculatedTarget − totalDeduction, i.e. the two
+    // fields above it. One column, reconcilable by eye against its own row.
+    // (It replaces the former `gap`, which was the same difference with the
+    // opposite sign and sat beside a differently-based outstandingMonth.)
     outstandingMonth: number;
   };
   // "Rincian Outstanding": the audit trail behind `summary.outstanding` — which
@@ -338,7 +340,6 @@ function toFleetRow(row: GojekVehicleRow): FleetRowDto {
     summary: {
       totalDeduction: row.totalDeduction,
       calculatedTarget: row.calculatedTarget,
-      gap: row.totalDeduction - row.calculatedTarget,
       billedDays: row.billedDays,
       billFromDay: row.billFromDay,
       billToDay: row.billToDay,
