@@ -18,6 +18,14 @@ export const fleetImports = pgTable('fleet_imports', {
   importedBy: bigint('imported_by', { mode: 'number' }).references(() => users.id),
   status: text('status').notNull().default('pending'), // pending|processing|done|failed
   totalRows: integer('total_rows').default(0),
+  // Where the file came from: `manual` (admin upload) or `portal` (automatic
+  // pull from the Gojek Fleet Partner Portal — see gojek-portal-sync/).
+  source: text('source').notNull().default('manual'),
+  syncRunId: bigint('sync_run_id', { mode: 'number' }), // gojek_portal_sync_runs.id when source = portal
+  // Rows the parser deliberately skipped (portal pulls: identical rows that
+  // an earlier batch of the same period already holds).
+  skippedRows: integer('skipped_rows').default(0),
+  error: text('error'), // operator-facing reason when status = failed
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

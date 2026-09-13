@@ -29,6 +29,7 @@ export class ListActivityLogsQueryDto {
       'mutation.create',
       'mutation.update',
       'mutation.delete',
+      'sync.gojek_portal.failure',
     ],
   })
   @IsOptional()

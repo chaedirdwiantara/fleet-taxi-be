@@ -16,6 +16,31 @@ const BATCH_SIZE = 1000;
 const PROGRESS_EVERY = 500;
 
 type Database = DatabaseService['db'];
+
+interface ParseOutcome {
+  inserted: number;
+  /** Rows dropped by cross-batch dedup (portal pulls only). */
+  skipped: number;
+}
+
+/** Fields that make two Gojek rows "the same transaction" across batches. */
+function gojekRowIdentity(r: {
+  transactionDate: string;
+  driverId: string | null;
+  vehiclePlateNorm: string | null;
+  amount: number | null;
+  type: string | null;
+  referenceId: string | null;
+}): string {
+  return [
+    r.transactionDate,
+    r.driverId ?? '',
+    r.vehiclePlateNorm ?? '',
+    r.amount ?? 0,
+    (r.type ?? '').trim().toLowerCase(),
+    r.referenceId ?? '',
+  ].join('|');
+}
 /** The transaction handle Drizzle passes to `db.transaction(cb)` — same query API. */
 type Executor = Parameters<Parameters<Database['transaction']>[0]>[0];
 
@@ -65,7 +90,7 @@ export class ImportProcessor extends WorkerHost {
       // One transaction for the whole file: any failure (bad row, missing
       // header, DB error) atomically rolls back every batch — no orphan rows,
       // no best-effort compensating delete that could silently fail.
-      const inserted = await db.transaction((tx) =>
+      const { inserted, skipped } = await db.transaction((tx) =>
         platform === 'gojek' ? this.parseGojek(tx, data, buffer) : this.parseGrab(tx, data, buffer),
       );
 
@@ -75,7 +100,7 @@ export class ImportProcessor extends WorkerHost {
           status: 'done',
           updatedAt: new Date(),
           ...(platform === 'gojek'
-            ? { totalRows: inserted }
+            ? { totalRows: inserted, skippedRows: skipped, error: null }
             : {
                 totalRow: inserted,
                 importTimeSeconds: ((Date.now() - startedAt) / 1000).toFixed(2),
@@ -91,24 +116,51 @@ export class ImportProcessor extends WorkerHost {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`import ${importId} (${platform}) failed: ${message}`);
-      // The transaction already rolled back every inserted row; just record status.
+      // The transaction already rolled back every inserted row; just record status
+      // (+ the reason for Gojek batches, so the portal-sync history can show it).
       await db
         .update(importsTable)
-        .set({ status: 'failed', updatedAt: new Date() })
+        .set({
+          status: 'failed',
+          updatedAt: new Date(),
+          ...(platform === 'gojek' ? { error: message.slice(0, 1000) } : {}),
+        })
         .where(eq(importsTable.id, importId));
       this.realtime.emitFailed({ importId, error: message });
     }
   }
 
-  private async parseGojek(tx: Executor, data: ParseJobData, buffer: Buffer): Promise<number> {
-    const { importId, periodYear, periodMonth } = data;
+  private async parseGojek(
+    tx: Executor,
+    data: ParseJobData,
+    buffer: Buffer,
+  ): Promise<ParseOutcome> {
+    const { importId, periodYear, periodMonth, dateFrom, dateTo } = data;
     const mapper = new GojekRowMapper();
+    // Portal pulls: rows the period already holds (from ANY earlier batch,
+    // counted per identity so genuine same-day duplicates inside one sheet
+    // survive) are skipped instead of re-inserted.
+    const existing = data.dedupe
+      ? await this.loadGojekIdentityCounts(tx, periodYear, periodMonth)
+      : null;
     let batch: (typeof fleetImportDetails.$inferInsert)[] = [];
     let inserted = 0;
+    let skipped = 0;
 
     for await (const row of readSpreadsheetRows(buffer, data.kind)) {
       const parsed = mapper.feed(row);
       if (!parsed) continue;
+      if (dateFrom && parsed.transactionDate < dateFrom) continue;
+      if (dateTo && parsed.transactionDate > dateTo) continue;
+      if (existing) {
+        const key = gojekRowIdentity(parsed);
+        const remaining = existing.get(key) ?? 0;
+        if (remaining > 0) {
+          existing.set(key, remaining - 1);
+          skipped++;
+          continue;
+        }
+      }
       batch.push({
         importId,
         transactionDate: parsed.transactionDate,
@@ -139,10 +191,40 @@ export class ImportProcessor extends WorkerHost {
     if (!mapper.headerFound) {
       throw new Error('Header row not found — is this a Gojek deduction report?');
     }
-    return inserted;
+    return { inserted, skipped };
   }
 
-  private async parseGrab(tx: Executor, data: ParseJobData, buffer: Buffer): Promise<number> {
+  /** identity → how many rows the period already holds (all batches). */
+  private async loadGojekIdentityCounts(
+    tx: Executor,
+    periodYear: number,
+    periodMonth: number,
+  ): Promise<Map<string, number>> {
+    const rows = await tx
+      .select({
+        transactionDate: fleetImportDetails.transactionDate,
+        driverId: fleetImportDetails.driverId,
+        vehiclePlateNorm: fleetImportDetails.vehiclePlateNorm,
+        amount: fleetImportDetails.amount,
+        type: fleetImportDetails.type,
+        referenceId: fleetImportDetails.referenceId,
+      })
+      .from(fleetImportDetails)
+      .where(
+        and(
+          eq(fleetImportDetails.periodYear, periodYear),
+          eq(fleetImportDetails.periodMonth, periodMonth),
+        ),
+      );
+    const counts = new Map<string, number>();
+    for (const r of rows) {
+      const key = gojekRowIdentity(r);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  private async parseGrab(tx: Executor, data: ParseJobData, buffer: Buffer): Promise<ParseOutcome> {
     const { importId, periodYear, periodMonth } = data;
     const mapper = new GrabRowMapper();
 
@@ -214,7 +296,7 @@ export class ImportProcessor extends WorkerHost {
     if (!mapper.headerFound) {
       throw new Error('Header row not found — is this a Grab statement export?');
     }
-    return inserted;
+    return { inserted, skipped: 0 };
   }
 
   private emitProgress(importId: number, processed: number): void {

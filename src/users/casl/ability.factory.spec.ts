@@ -24,6 +24,7 @@ describe('AbilityFactory (row-scoped RBAC)', () => {
       mustChangePassword: false,
     });
     expect(ability.can('manage', 'FleetImport')).toBe(true);
+    expect(ability.can('manage', 'GojekPortalSync')).toBe(true);
     expect(ability.can('delete', subject('Order', { partnerId: 99 }))).toBe(true);
   });
 
@@ -38,6 +39,9 @@ describe('AbilityFactory (row-scoped RBAC)', () => {
     });
     expect(ability.can('manage', 'FleetImport')).toBe(true);
     expect(ability.can('manage', 'GrabTarget')).toBe(true);
+    // portal credentials + schedule are super_admin-only
+    expect(ability.can('manage', 'GojekPortalSync')).toBe(false);
+    expect(ability.can('read', 'GojekPortalSync')).toBe(false);
     expect(ability.can('read', 'Order')).toBe(true);
     expect(ability.can('update', 'Partner')).toBe(false);
     expect(ability.can('manage', 'all')).toBe(false);

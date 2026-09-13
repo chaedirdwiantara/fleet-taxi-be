@@ -49,6 +49,7 @@ and in `production` rejects weak/placeholder `SESSION_SECRET` / `API_KEY_PEPPER`
 | `COOKIE_DOMAIN` | `.fleet-taxi.id` | no |
 | `CORS_ORIGINS` | `https://app.fleet-taxi.id` | no |
 | `API_KEY_PEPPER` | 32+ char random | **yes** |
+| `GOJEK_PORTAL_ENCRYPTION_KEY` | 32+ char random — encrypts the stored Gojek Fleet Partner Portal credential (optional: unset = sync feature reports "belum dikonfigurasi", API still boots) | **yes** |
 | `S3_BUCKET` | `fleet-taxi-imports` | no |
 | `S3_REGION` / `AWS_REGION` | `ap-southeast-1` | no |
 | `SWAGGER_ENABLED` | `false` in prod (`true` in staging) | no |
