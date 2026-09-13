@@ -17,5 +17,6 @@ import { IMPORT_QUEUE } from './import.types';
   ],
   controllers: [ImportController],
   providers: [ImportService, ImportProcessor],
+  exports: [ImportService],
 })
 export class ImportModule {}

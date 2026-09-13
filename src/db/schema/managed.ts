@@ -16,3 +16,4 @@ export * from './rentals';
 export * from './activity-log';
 export * from './drivers';
 export * from './deposit-installments';
+export * from './gojek-portal-sync';

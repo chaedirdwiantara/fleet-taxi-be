@@ -6,7 +6,7 @@ import { nanoid } from 'nanoid';
 import { DatabaseService } from '../db/database.service';
 import { fleetImports, grabImports, users } from '../db/schema';
 import { StorageService } from '../storage/storage.service';
-import { detectKind } from './file-reader';
+import { detectKind, SpreadsheetKind } from './file-reader';
 import { IMPORT_QUEUE, ParseJobData, Platform, RollbackJobData } from './import.types';
 
 export interface UploadedFile {
@@ -16,6 +16,21 @@ export interface UploadedFile {
 }
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+export type ImportSource = 'manual' | 'portal';
+
+export interface PortalImportInput {
+  /** Storage key of the already-saved portal download. */
+  fileKey: string;
+  filename: string;
+  kind: SpreadsheetKind;
+  periodYear: number;
+  periodMonth: number;
+  /** WIB day window inside the period that this batch owns (inclusive). */
+  dateFrom: string;
+  dateTo: string;
+  syncRunId: number;
+}
 
 @Injectable()
 export class ImportService {
@@ -46,7 +61,11 @@ export class ImportService {
       processed: status === 'done' ? totalRows : 0,
       percent: status === 'done' ? 100 : 0,
       status,
-      error: null as string | null,
+      error: (row.error as string | null) ?? null,
+      // Grab batches have no source column: they are always manual uploads.
+      source: ((row.source as string | undefined) ?? 'manual') as ImportSource,
+      syncRunId: row.syncRunId == null ? null : Number(row.syncRunId),
+      skippedRows: Number(row.skippedRows ?? 0),
       importedBy: row.importedBy == null ? null : Number(row.importedBy),
       uploaderName: null as string | null, // resolved in list() (batch name lookup)
       createdAt: row.createdAt as Date,
@@ -97,6 +116,56 @@ export class ImportService {
     await this.queue.add('parse', jobData, { attempts: 1 }); // failed imports roll back, never blind-retry
 
     return { importId: row!.id };
+  }
+
+  /**
+   * Gojek batch born from the Fleet Partner Portal sync. Same queue + parser
+   * as a manual upload, plus the date window and cross-batch dedup that make
+   * a scheduled daily pull safe to repeat.
+   */
+  async createPortalImport(input: PortalImportInput): Promise<{ importId: number }> {
+    const [row] = await this.database.db
+      .insert(fleetImports)
+      .values({
+        filename: input.filename,
+        periodMonth: input.periodMonth,
+        periodYear: input.periodYear,
+        importedBy: null,
+        status: 'pending',
+        source: 'portal',
+        syncRunId: input.syncRunId,
+      })
+      .returning({ id: fleetImports.id });
+
+    const jobData: ParseJobData = {
+      platform: 'gojek',
+      importId: row!.id,
+      fileKey: input.fileKey,
+      filename: input.filename,
+      periodYear: input.periodYear,
+      periodMonth: input.periodMonth,
+      kind: input.kind,
+      dateFrom: input.dateFrom,
+      dateTo: input.dateTo,
+      dedupe: true,
+    };
+    await this.queue.add('parse', jobData, { attempts: 1 });
+    return { importId: row!.id };
+  }
+
+  /** Raw status of several batches — the portal sync polls this to finish a run. */
+  async getGojekBatchStates(ids: number[]) {
+    if (ids.length === 0) return [];
+    return this.database.db
+      .select({
+        id: fleetImports.id,
+        status: fleetImports.status,
+        totalRows: fleetImports.totalRows,
+        skippedRows: fleetImports.skippedRows,
+        error: fleetImports.error,
+      })
+      .from(fleetImports)
+      .where(inArray(fleetImports.id, ids));
   }
 
   async list(platform: Platform) {

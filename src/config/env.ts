@@ -7,6 +7,8 @@ const WEAK_SECRETS = new Set([
   'dev-only-pepper',
   'test-secret',
   'test-pepper',
+  'dev-only-portal-key',
+  'test-portal-key',
 ]);
 
 export const envSchema = z
@@ -20,6 +22,11 @@ export const envSchema = z
     // Comma-separated origin allowlist, e.g. "https://app.fleet-taxi.id,http://localhost:5173"
     CORS_ORIGINS: z.string().min(1),
     API_KEY_PEPPER: z.string().min(1),
+    // Encrypts the stored Gojek Fleet Partner Portal credential digest
+    // (gojek-portal-sync). Optional so a rollout that has not registered the
+    // secret yet still boots — the sync feature then reports itself as
+    // "not configured" instead of taking the whole API down.
+    GOJEK_PORTAL_ENCRYPTION_KEY: z.string().min(1).optional(),
     S3_BUCKET: z.string().optional(),
     S3_REGION: z.string().optional(),
     AWS_REGION: z.string().optional(),
@@ -34,8 +41,13 @@ export const envSchema = z
   .superRefine((env, ctx) => {
     // Fail fast if production is deployed with dev/weak secrets — a hardening guard.
     if (env.NODE_ENV !== 'production') return;
-    for (const key of ['SESSION_SECRET', 'API_KEY_PEPPER'] as const) {
+    for (const key of [
+      'SESSION_SECRET',
+      'API_KEY_PEPPER',
+      'GOJEK_PORTAL_ENCRYPTION_KEY',
+    ] as const) {
       const value = env[key];
+      if (value === undefined) continue; // only the optional portal key may be absent
       if (WEAK_SECRETS.has(value) || value.length < 32) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

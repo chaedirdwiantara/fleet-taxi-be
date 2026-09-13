@@ -219,7 +219,8 @@
                 "auth.password_change",
                 "mutation.create",
                 "mutation.update",
-                "mutation.delete"
+                "mutation.delete",
+                "sync.gojek_portal.failure"
               ]
             }
           },
@@ -774,6 +775,200 @@
         "summary": "Rollback a whole import batch (queued)",
         "tags": [
           "admin-fleet-imports"
+        ]
+      }
+    },
+    "/admin/gojek-portal-sync/settings": {
+      "get": {
+        "operationId": "AdminGojekPortalSyncController_getSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Portal account (never the password) + daily schedule",
+        "tags": [
+          "admin-gojek-portal-sync"
+        ]
+      },
+      "put": {
+        "operationId": "AdminGojekPortalSyncController_updateSettings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGojekPortalSyncSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Save portal account + schedule (empty password keeps the stored one)",
+        "tags": [
+          "admin-gojek-portal-sync"
+        ]
+      }
+    },
+    "/admin/gojek-portal-sync/test-connection": {
+      "post": {
+        "operationId": "AdminGojekPortalSyncController_testConnection",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestGojekPortalConnectionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Login to the portal only; remembers lastVerifiedAt for the stored account",
+        "tags": [
+          "admin-gojek-portal-sync"
+        ]
+      }
+    },
+    "/admin/gojek-portal-sync/status": {
+      "get": {
+        "operationId": "AdminGojekPortalSyncController_getStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Schedule state, last/current run, next scheduled tick",
+        "tags": [
+          "admin-gojek-portal-sync"
+        ]
+      }
+    },
+    "/admin/gojek-portal-sync/runs": {
+      "get": {
+        "operationId": "AdminGojekPortalSyncController_listRuns",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Sync run history (newest first)",
+        "tags": [
+          "admin-gojek-portal-sync"
+        ]
+      },
+      "post": {
+        "operationId": "AdminGojekPortalSyncController_createRun",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGojekPortalSyncRunDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Run now (queued): optional WIB range, max 31 days",
+        "tags": [
+          "admin-gojek-portal-sync"
+        ]
+      }
+    },
+    "/admin/gojek-portal-sync/runs/{id}": {
+      "get": {
+        "operationId": "AdminGojekPortalSyncController_getRun",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "One sync run (poll while status = running)",
+        "tags": [
+          "admin-gojek-portal-sync"
         ]
       }
     },
@@ -4625,6 +4820,71 @@
         "required": [
           "plateNumber"
         ]
+      },
+      "UpdateGojekPortalSyncSettingsDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "finance@rental.id",
+            "description": "Fleet Partner Portal account"
+          },
+          "password": {
+            "type": "string",
+            "description": "Portal password. Omit / empty = keep the stored one. Never echoed back; only its digest is stored, encrypted.",
+            "writeOnly": true
+          },
+          "isEnabled": {
+            "type": "boolean",
+            "example": true
+          },
+          "runAt": {
+            "type": "string",
+            "example": "05:00",
+            "description": "Daily run time, WIB, 30-minute steps"
+          },
+          "lookbackDays": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 7,
+            "example": 1
+          }
+        },
+        "required": [
+          "email",
+          "isEnabled",
+          "runAt",
+          "lookbackDays"
+        ]
+      },
+      "TestGojekPortalConnectionDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Defaults to the stored account email"
+          },
+          "password": {
+            "type": "string",
+            "description": "Defaults to the stored password",
+            "writeOnly": true
+          }
+        }
+      },
+      "CreateGojekPortalSyncRunDto": {
+        "type": "object",
+        "properties": {
+          "dateFrom": {
+            "type": "string",
+            "example": "2026-09-01",
+            "description": "WIB day; defaults to the schedule range"
+          },
+          "dateTo": {
+            "type": "string",
+            "example": "2026-09-07",
+            "description": "WIB day, inclusive"
+          }
+        }
       },
       "EditDriverDto": {
         "type": "object",

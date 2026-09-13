@@ -24,6 +24,8 @@ export type SubjectName =
   // Same deal: the admin plate registry decides which vehicles the whole admin
   // console can see, so it stays out of FLEET_SUBJECTS (super_admin only).
   | 'PlateRegistry'
+  // Gojek Fleet Partner Portal sync (credentials + schedule): super_admin only.
+  | 'GojekPortalSync'
   | 'all';
 
 export type AppAbility = MongoAbility<[Action, SubjectName | Record<string, unknown>]>;

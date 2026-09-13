@@ -18,6 +18,20 @@ export interface ParseJobData {
   periodYear: number;
   periodMonth: number;
   kind: 'csv' | 'xlsx';
+  /**
+   * Portal pulls only (gojek-portal-sync): keep just the rows whose
+   * transaction date falls inside this WIB window (YYYY-MM-DD, inclusive) —
+   * a pull that straddles two months becomes one job per month.
+   */
+  dateFrom?: string;
+  dateTo?: string;
+  /**
+   * Portal pulls only: skip a row when the same period already holds an
+   * identical row (any batch), so overlapping lookback windows and daily
+   * re-pulls never double-count a deposit. Manual uploads keep the legacy
+   * behaviour (every row is inserted).
+   */
+  dedupe?: boolean;
 }
 
 export interface RollbackJobData {

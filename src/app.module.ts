@@ -15,6 +15,7 @@ import { buildLoggerParams } from './config/logger';
 import { parseRedisConnection } from './config/redis';
 import { DrizzleModule } from './db/drizzle.module';
 import { FleetModule } from './fleet/fleet.module';
+import { GojekPortalSyncModule } from './gojek-portal-sync/gojek-portal-sync.module';
 import { GrabModule } from './grab/grab.module';
 import { HealthModule } from './health/health.module';
 import { ImportModule } from './import/import.module';
@@ -58,6 +59,7 @@ import { UsersModule } from './users/users.module';
     AdminPlatesModule,
     RealtimeModule,
     ImportModule,
+    GojekPortalSyncModule,
     FleetModule,
     GrabModule,
     PartnerPortalModule,
