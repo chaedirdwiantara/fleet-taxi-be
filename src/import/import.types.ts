@@ -1,6 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
 
-export const IMPORT_QUEUE = 'fleet-import';
+/**
+ * e2e specs boot many Nest apps against ONE Redis; a per-process queue name
+ * keeps a sibling spec's worker — possibly mid-teardown, with its DB pool
+ * already closing — from picking up this process's parse/rollback jobs.
+ */
+export const IMPORT_QUEUE =
+  process.env.NODE_ENV === 'test' ? `fleet-import-test-${process.pid}` : 'fleet-import';
 
 export type Platform = 'gojek' | 'grab';
 
