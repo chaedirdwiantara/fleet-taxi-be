@@ -235,7 +235,9 @@ export class PartnerRentalsController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a rental transaction (overlap-guarded per plate)' })
+  @ApiOperation({
+    summary: 'Create a rental transaction (a same-plate date overlap needs allowOverlap)',
+  })
   create(@CurrentUser() user: SessionUser, @Body() dto: CreateRentalDto) {
     return this.rentalsService.create(requirePartner(user), dto);
   }

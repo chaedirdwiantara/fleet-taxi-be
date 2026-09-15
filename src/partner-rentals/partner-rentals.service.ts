@@ -33,6 +33,30 @@ import {
   summarizeRentals,
 } from './rental-presenter';
 
+/**
+ * `details[].field` of every clashing-rental entry in the overlap CONFLICT —
+ * the marker the client keys its confirmation UI off. Exported so the contract
+ * lives in one place instead of a string literal on each side.
+ */
+export const OVERLAP_DETAIL_FIELD = 'plateOverlap';
+
+/** Enough clashes to explain the refusal; the list is a warning, not a report. */
+const OVERLAP_DETAIL_LIMIT = 5;
+
+const DATE_FMT_ID = new Intl.DateTimeFormat('id-ID', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC', // date-only columns carry no zone; UTC keeps the day as written
+});
+
+/** "2026-09-01".."2026-09-03" → "1 Sep 2026 – 3 Sep 2026" (single day collapses). */
+function formatRangeId(startDate: string, endDate: string): string {
+  const from = DATE_FMT_ID.format(new Date(`${startDate}T00:00:00Z`));
+  if (startDate === endDate) return from;
+  return `${from} – ${DATE_FMT_ID.format(new Date(`${endDate}T00:00:00Z`))}`;
+}
+
 export interface ListRentalsFilters {
   month?: number;
   year?: number;
@@ -176,7 +200,14 @@ export class PartnerRentalsService {
 
   async create(partnerId: number, dto: CreateRentalDto): Promise<RentalItemDto> {
     const values = this.toRowValues(dto);
-    await this.assertNoOverlap(partnerId, values.plateNumberNorm, dto, values.plateNumber);
+    if (!dto.allowOverlap) {
+      await this.assertOverlapAcknowledged(
+        partnerId,
+        values.plateNumberNorm,
+        dto,
+        values.plateNumber,
+      );
+    }
     const ppnRateBps = await this.currentPpnRateBps(partnerId);
 
     const row = await this.database.db.transaction(async (tx) => {
@@ -199,7 +230,15 @@ export class PartnerRentalsService {
   async update(partnerId: number, id: number, dto: CreateRentalDto): Promise<RentalItemDto> {
     const existing = await this.requireOwned(partnerId, id);
     const values = this.toRowValues(dto);
-    await this.assertNoOverlap(partnerId, values.plateNumberNorm, dto, values.plateNumber, id);
+    if (!dto.allowOverlap) {
+      await this.assertOverlapAcknowledged(
+        partnerId,
+        values.plateNumberNorm,
+        dto,
+        values.plateNumber,
+        id,
+      );
+    }
 
     // An unpaid rental re-reads the partner's current PKP status (turning PKP
     // on should apply to bills not yet issued); a settled one keeps the rate it
@@ -406,16 +445,32 @@ export class PartnerRentalsService {
     return partner?.isPkp ? PPN_RATE_BPS : 0;
   }
 
-  /** Same plate must not have two rentals of this partner on overlapping dates. */
-  private async assertNoOverlap(
+  /**
+   * A plate MAY be rented more than once over the same dates — a car let out
+   * for six hours can be let out again the same day to another customer — so an
+   * overlap is not an error by itself. What it usually is, though, is the same
+   * booking entered twice, and that silently doubles the month's omset.
+   *
+   * So the overlap is reported once, as CONFLICT with one `details` entry per
+   * clashing rental, and the caller re-sends with `allowOverlap: true` to say
+   * "yes, this is a separate booking". The marker field is `plateOverlap`, which
+   * is what lets the client tell this refusal apart from any other conflict on
+   * the same endpoint.
+   */
+  private async assertOverlapAcknowledged(
     partnerId: number,
     plateNumberNorm: string,
     dto: { startDate: string; endDate: string },
     plateDisplay: string,
     excludeId?: number,
   ): Promise<void> {
-    const [clash] = await this.database.db
-      .select({ id: rentals.id })
+    const clashes = await this.database.db
+      .select({
+        startDate: rentals.startDate,
+        endDate: rentals.endDate,
+        customerName: rentals.customerName,
+        paymentStatus: rentals.paymentStatus,
+      })
       .from(rentals)
       .where(
         and(
@@ -426,11 +481,23 @@ export class PartnerRentalsService {
           excludeId != null ? ne(rentals.id, excludeId) : sql`true`,
         ),
       )
-      .limit(1);
-    if (clash) {
-      throw new ConflictException(
-        `Plat ${plateDisplay} sudah memiliki rental pada rentang tanggal tersebut.`,
-      );
-    }
+      .orderBy(asc(rentals.startDate))
+      .limit(OVERLAP_DETAIL_LIMIT);
+
+    if (clashes.length === 0) return;
+
+    throw new ConflictException({
+      message:
+        `Plat ${plateDisplay} sudah punya rental pada rentang tanggal tersebut. ` +
+        'Lanjutkan hanya jika ini memang penyewaan terpisah.',
+      details: clashes.map((clash) => ({
+        field: OVERLAP_DETAIL_FIELD,
+        message: [
+          formatRangeId(clash.startDate, clash.endDate),
+          clash.customerName?.trim() || 'tanpa nama customer',
+          clash.paymentStatus,
+        ].join(' · '),
+      })),
+    });
   }
 }

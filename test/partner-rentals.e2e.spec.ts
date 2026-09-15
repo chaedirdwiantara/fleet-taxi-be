@@ -141,6 +141,70 @@ describe('rental payment proofs', () => {
     await app.close();
   });
 
+  // A plate let out for six hours can be let out again the same day, so an
+  // overlap is allowed — but only once the caller has acknowledged it, which is
+  // what keeps a double-entered booking from doubling the month's omset.
+  describe('same-plate date overlap', () => {
+    const SHARED_PLATE = 'B 8100 OVL';
+    const slot = (overrides: Record<string, unknown> = {}) =>
+      rentalBody({
+        plateNumber: SHARED_PLATE,
+        startDate: `${YEAR}-0${MONTH}-12`,
+        endDate: `${YEAR}-0${MONTH}-12`,
+        ...overrides,
+      });
+
+    it('refuses the second booking until the overlap is acknowledged', async () => {
+      await createRental(agentA, slot({ customerName: 'Sewa Pagi' })).expect(201);
+
+      const denied = await createRental(agentA, slot({ customerName: 'Sewa Sore' })).expect(409);
+      expect(denied.body.error.code).toBe('CONFLICT');
+      expect(denied.body.error.details).toEqual([
+        { field: 'plateOverlap', message: expect.stringContaining('Sewa Pagi') },
+      ]);
+      // The clash is spelled out in WIB-friendly Indonesian, not raw ISO.
+      expect(denied.body.error.details[0].message).toContain(`12 Apr ${YEAR}`);
+
+      const allowed = await createRental(
+        agentA,
+        slot({ customerName: 'Sewa Sore', allowOverlap: true }),
+      ).expect(201);
+      expect(allowed.body.data.plateNumber).toBe(SHARED_PLATE);
+    });
+
+    it('counts both bookings of the day in the monthly recap', async () => {
+      const recap = await agentA
+        .get(
+          `/partner/portal/rentals?month=${MONTH}&year=${YEAR}&search=${encodeURIComponent(SHARED_PLATE)}`,
+        )
+        .expect(200);
+      const sameDay = (recap.body.data.items as Array<{ startDate: string }>).filter(
+        (item) => item.startDate === `${YEAR}-0${MONTH}-12`,
+      );
+      expect(sameDay).toHaveLength(2);
+    });
+
+    it('still flags an edit that lands on another booking of the same plate', async () => {
+      const other = await createRental(
+        agentA,
+        slot({ startDate: `${YEAR}-0${MONTH}-20`, endDate: `${YEAR}-0${MONTH}-21` }),
+      ).expect(201);
+
+      // Moving it onto the 12th clashes with the two bookings already there…
+      const denied = await agentA
+        .put(`/partner/portal/rentals/${other.body.data.id}`)
+        .send(slot())
+        .expect(409);
+      expect(denied.body.error.details).toHaveLength(2);
+
+      // …and re-saving it in place does NOT clash with itself.
+      await agentA
+        .put(`/partner/portal/rentals/${other.body.data.id}`)
+        .send(slot({ startDate: `${YEAR}-0${MONTH}-20`, endDate: `${YEAR}-0${MONTH}-21` }))
+        .expect(200);
+    });
+  });
+
   it('accepts every supported rental type and rejects an unknown one', async () => {
     for (const rentalType of RENTAL_TYPES) {
       const res = await createRental(agentA, rentalBody({ rentalType })).expect(201);
