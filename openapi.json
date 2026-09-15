@@ -5288,7 +5288,8 @@
             "type": "string",
             "enum": [
               "Dengan Driver",
-              "Lepas Kunci"
+              "Lepas Kunci",
+              "Rent to Rent"
             ]
           },
           "infoSource": {

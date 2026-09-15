@@ -36,7 +36,7 @@ export const rentals = pgTable(
     additionalCost: bigint('additional_cost', { mode: 'number' }).notNull().default(0),
     additionalCostDescription: text('additional_cost_description'),
     deposit: bigint('deposit', { mode: 'number' }).notNull().default(0),
-    rentalType: text('rental_type'), // 'Dengan Driver' | 'Lepas Kunci'
+    rentalType: text('rental_type'), // one of RENTAL_TYPES (partner-rentals/rental-presenter)
     infoSource: text('info_source'),
     serviceArea: text('service_area'),
     customerName: text('customer_name'),
