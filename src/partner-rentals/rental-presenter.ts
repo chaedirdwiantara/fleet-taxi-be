@@ -13,7 +13,7 @@ export type RentalProofRow = typeof rentalPaymentProofs.$inferSelect;
 export const PAYMENT_STATUSES = ['Belum Dibayar', 'Sudah Dibayar'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
-export const RENTAL_TYPES = ['Dengan Driver', 'Lepas Kunci'] as const;
+export const RENTAL_TYPES = ['Dengan Driver', 'Lepas Kunci', 'Rent to Rent'] as const;
 export const PRICE_UNITS = ['hari', 'bulan'] as const;
 
 /**

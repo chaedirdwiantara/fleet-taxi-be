@@ -17,6 +17,7 @@ import { configureApp } from '../src/app.setup';
 import { DatabaseService } from '../src/db/database.service';
 import { partners, rentalPaymentProofs, rentals, roles, userRoles, users } from '../src/db/schema';
 import { RENTAL_MAX_PROOFS } from '../src/partner-rentals/rental-proof.constants';
+import { RENTAL_TYPES } from '../src/partner-rentals/rental-presenter';
 
 const RUN = `rpf${Date.now()}`;
 const PASSWORD = 'rental-proof-test-pw';
@@ -138,6 +139,17 @@ describe('rental payment proofs', () => {
     await db.delete(users).where(inArray(users.partnerId, ids));
     await db.delete(partners).where(inArray(partners.id, ids));
     await app.close();
+  });
+
+  it('accepts every supported rental type and rejects an unknown one', async () => {
+    for (const rentalType of RENTAL_TYPES) {
+      const res = await createRental(agentA, rentalBody({ rentalType })).expect(201);
+      expect(res.body.data.rentalType).toBe(rentalType);
+    }
+    const denied = await createRental(agentA, rentalBody({ rentalType: 'Sewa Harian' })).expect(
+      400,
+    );
+    expect(denied.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('rejects creating a paid rental with no evidence', async () => {
