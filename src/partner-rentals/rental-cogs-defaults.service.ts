@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, eq } from 'drizzle-orm';
 import { DatabaseService } from '../db/database.service';
 import { rentalCogsDefaults } from '../db/schema';
@@ -78,6 +78,37 @@ export class RentalCogsDefaultsService {
       })
       .returning();
     return { key: row!.vehicleTypeKey, label: row!.vehicleTypeLabel, cogsPerDay: row!.cogsPerDay };
+  }
+
+  /**
+   * Deletes one preset. The last remaining preset is protected: the table
+   * being empty is what triggers the lazy seed above, so deleting everything
+   * would silently resurrect the legacy defaults on the next read. The rows
+   * are locked so two concurrent deletes cannot both pass the count check.
+   */
+  async remove(partnerId: number, key: string): Promise<{ deleted: true }> {
+    await this.database.db.transaction(async (tx) => {
+      const rows = await tx
+        .select({ key: rentalCogsDefaults.vehicleTypeKey })
+        .from(rentalCogsDefaults)
+        .where(eq(rentalCogsDefaults.partnerId, partnerId))
+        .for('update');
+      if (!rows.some((r) => r.key === key)) {
+        throw new NotFoundException('Setting COGS tidak ditemukan');
+      }
+      if (rows.length <= 1) {
+        throw new ConflictException('Minimal satu tipe COGS harus tersisa');
+      }
+      await tx
+        .delete(rentalCogsDefaults)
+        .where(
+          and(
+            eq(rentalCogsDefaults.partnerId, partnerId),
+            eq(rentalCogsDefaults.vehicleTypeKey, key),
+          ),
+        );
+    });
+    return { deleted: true };
   }
 
   private async rowsOf(partnerId: number): Promise<CogsDefaultDto[]> {
