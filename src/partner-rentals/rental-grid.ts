@@ -30,11 +30,16 @@ export interface RentalGridBookingDto {
 }
 
 export interface RentalGridDayDto {
-  /** Integer rupiah this booking contributes to that calendar day. */
+  /** Integer rupiah every booking of that calendar day contributes, summed. */
   amount: number;
   paymentStatus: string;
-  /** Which booking the day belongs to, so a click can open exactly that one. */
-  rentalId: number;
+  /**
+   * Every booking the day belongs to, so a click can open exactly them. A
+   * plural: one plate may be let out twice over the same date (six hours, then
+   * another customer), and `amount` is their sum — a single id here would let a
+   * drill-down show less money than the cell that opened it.
+   */
+  rentalIds: number[];
 }
 
 export interface RentalGridTotalsDto {
@@ -167,12 +172,11 @@ export function buildRentalGrid(
       if (!existing) row.totals.rentedDays += 1;
       row.days[day] = {
         amount: (existing?.amount ?? 0) + days[day]!,
-        // Overlapping bookings on one plate are blocked on write; if data from
-        // before that guard ever surfaces one, the unpaid side wins so the cell
-        // never claims money was collected when part of it was not.
+        // Two bookings may legitimately share a date. The unpaid side wins so
+        // the cell never claims money was collected when part of it was not.
         paymentStatus:
           existing?.paymentStatus === UNPAID ? UNPAID : (booking.paymentStatus ?? UNPAID),
-        rentalId: existing?.rentalId ?? booking.id,
+        rentalIds: [...(existing?.rentalIds ?? []), booking.id],
       };
     }
   }

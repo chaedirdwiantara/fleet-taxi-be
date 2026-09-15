@@ -52,7 +52,7 @@ describe('buildRentalGrid', () => {
     expect(grid.rows[0]!.days[2]).toEqual({
       amount: 450_000,
       paymentStatus: 'Belum Dibayar',
-      rentalId: 1,
+      rentalIds: [1],
     });
     expect(grid.rows[0]!.totals.rentedDays).toBe(3);
   });
@@ -163,11 +163,19 @@ describe('buildRentalGrid', () => {
       JULY,
     );
 
-    expect(grid.rows[0]!.days[1]).toMatchObject({ paymentStatus: 'Sudah Dibayar', rentalId: 1 });
-    expect(grid.rows[0]!.days[5]).toMatchObject({ paymentStatus: 'Belum Dibayar', rentalId: 2 });
+    expect(grid.rows[0]!.days[1]).toMatchObject({
+      paymentStatus: 'Sudah Dibayar',
+      rentalIds: [1],
+    });
+    expect(grid.rows[0]!.days[5]).toMatchObject({
+      paymentStatus: 'Belum Dibayar',
+      rentalIds: [2],
+    });
   });
 
-  it('counts a day once when two bookings somehow share it, and calls it unpaid', () => {
+  // A plate let out for six hours can be let out again that day, so a shared
+  // date is a supported case — not a data anomaly.
+  it('counts a shared day once, sums it, calls it unpaid, and names both bookings', () => {
     const grid = buildRentalGrid(
       [
         row({
@@ -186,6 +194,9 @@ describe('buildRentalGrid', () => {
     expect(grid.rows[0]!.days[3]).toMatchObject({
       amount: 900_000,
       paymentStatus: 'Belum Dibayar',
+      // Both, in booking order: `amount` is their sum, so a drill-down that
+      // knew only one of them would show less money than the cell.
+      rentalIds: [1, 2],
     });
   });
 

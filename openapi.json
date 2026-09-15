@@ -3667,7 +3667,7 @@
             "session": []
           }
         ],
-        "summary": "Create a rental transaction (overlap-guarded per plate)",
+        "summary": "Create a rental transaction (a same-plate date overlap needs allowOverlap)",
         "tags": [
           "partner-portal"
         ]
@@ -5344,6 +5344,10 @@
               "Sudah Dibayar"
             ],
             "description": "Default 'Belum Dibayar'"
+          },
+          "allowOverlap": {
+            "type": "boolean",
+            "description": "Acknowledge that this plate already has a rental over the same dates (e.g. a second booking the same day). Absent/false ⇒ the overlap is refused with CONFLICT and one `plateOverlap` detail per clashing rental."
           },
           "paymentProofIds": {
             "example": [

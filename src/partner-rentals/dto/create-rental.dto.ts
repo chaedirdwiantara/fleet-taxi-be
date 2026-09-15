@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsISO8601,
@@ -117,6 +118,16 @@ export class CreateRentalDto {
   @IsOptional()
   @IsIn(PAYMENT_STATUSES)
   paymentStatus?: (typeof PAYMENT_STATUSES)[number];
+
+  @ApiPropertyOptional({
+    description:
+      'Acknowledge that this plate already has a rental over the same dates ' +
+      '(e.g. a second booking the same day). Absent/false ⇒ the overlap is ' +
+      'refused with CONFLICT and one `plateOverlap` detail per clashing rental.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  allowOverlap?: boolean;
 
   @ApiPropertyOptional({
     type: [Number],
