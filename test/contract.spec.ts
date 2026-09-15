@@ -23,6 +23,7 @@ const EXPECTED_OPERATIONS = [
   'DELETE /partner/portal/drivers/documents/{driverId}/{documentId}',
   'DELETE /partner/portal/fleet/gojek/exceptions/{id}',
   'DELETE /partner/portal/plates/{id}',
+  'DELETE /partner/portal/rentals/cogs-defaults/{key}',
   'DELETE /partner/portal/rentals/proofs/{proofId}',
   'DELETE /partner/portal/rentals/{id}',
   'GET /admin/activity-logs',

@@ -93,6 +93,12 @@ export class PartnerRentalsController {
     return this.cogsDefaults.upsert(requirePartner(user), dto);
   }
 
+  @Delete('cogs-defaults/:key')
+  @ApiOperation({ summary: 'Delete one COGS default (refused when it is the last one)' })
+  removeCogsDefault(@CurrentUser() user: SessionUser, @Param('key') key: string) {
+    return this.cogsDefaults.remove(requirePartner(user), key);
+  }
+
   @Get('tax-settings')
   @ApiOperation({ summary: "The partner's PKP status, NPWP, and the PPN rate new rentals get" })
   getTaxSettings(@CurrentUser() user: SessionUser) {
