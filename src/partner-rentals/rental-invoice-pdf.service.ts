@@ -242,7 +242,7 @@ export class RentalInvoicePdfService {
           text(line.description, { fontSize: 9.5 }),
           line.detail ? text(line.detail, { fontSize: 8, color: MUTED, marginTop: 2 }) : null,
         ),
-        text(`${line.quantity} ${line.unit}`, {
+        text(line.quantityLabel ?? `${line.quantity} ${line.unit}`, {
           flex: COLS.qty,
           fontSize: 9.5,
           textAlign: 'right',

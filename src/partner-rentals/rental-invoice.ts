@@ -9,7 +9,7 @@
  * COGS and nett profit are deliberately absent — they are the partner's
  * internal margin, never shown to the customer being billed.
  */
-import { ppnFor, RentalItemDto } from './rental-presenter';
+import { monthlySlices, ppnFor, RentalItemDto } from './rental-presenter';
 
 export interface InvoiceLine {
   description: string;
@@ -17,8 +17,25 @@ export interface InvoiceLine {
   detail: string | null;
   quantity: number;
   unit: string;
+  /**
+   * Printed in place of `quantity unit` when the quantity is a share of a
+   * unit — "27/31 bulan" — so that quantity × unitPrice = amount still reads
+   * true on the page.
+   */
+  quantityLabel?: string;
   unitPrice: number;
   amount: number;
+}
+
+const MONTH_FMT = new Intl.DateTimeFormat('id-ID', {
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+
+/** 'YYYY-MM-DD' → "Agustus 2026". */
+function monthLabel(isoDate: string): string {
+  return MONTH_FMT.format(new Date(`${isoDate}T00:00:00Z`));
 }
 
 export interface RentalInvoiceDto {
@@ -72,21 +89,43 @@ export function invoiceFileName(number: string): string {
 }
 
 /**
- * Billable lines: the rental itself (days × price/day) plus the additional
- * cost when the transaction carries one. `additionalCost` is a per-transaction
- * TOTAL, hence quantity 1.
+ * Billable lines: the rental itself plus the additional cost when the
+ * transaction carries one. `additionalCost` is a per-transaction TOTAL, hence
+ * quantity 1.
+ *
+ * A 'hari' booking is one line, days × price/day. A 'bulan' booking is one
+ * line PER CALENDAR MONTH it touches, each a share of the monthly price
+ * ("27/31 bulan × Rp 8.000.000"), because that is how the amount was derived
+ * — a single "31 hari × rate" line could not be checked against the quote.
  */
 export function invoiceLines(item: RentalItemDto): InvoiceLine[] {
-  const lines: InvoiceLine[] = [
-    {
-      description: `Sewa Kendaraan ${item.plateNumber}`,
-      detail: [item.vehicleType, item.rentalType].filter(Boolean).join(' · ') || null,
-      quantity: item.days,
-      unit: 'hari',
-      unitPrice: item.pricePerDay,
-      amount: item.gross,
-    },
-  ];
+  const unitDetail = [item.vehicleType, item.rentalType].filter(Boolean).join(' · ');
+  const lines: InvoiceLine[] =
+    item.priceUnit === 'bulan'
+      ? monthlySlices(item).map((slice) => ({
+          description: `Sewa Kendaraan ${item.plateNumber} · ${monthLabel(slice.from)}`,
+          detail: [unitDetail, `${slice.days} dari ${slice.daysInMonth} hari`]
+            .filter(Boolean)
+            .join(' · '),
+          quantity: slice.days,
+          unit: 'hari',
+          quantityLabel:
+            slice.days === slice.daysInMonth
+              ? '1 bulan'
+              : `${slice.days}/${slice.daysInMonth} bulan`,
+          unitPrice: item.pricePerMonth ?? 0,
+          amount: slice.amount,
+        }))
+      : [
+          {
+            description: `Sewa Kendaraan ${item.plateNumber}`,
+            detail: unitDetail || null,
+            quantity: item.days,
+            unit: 'hari',
+            unitPrice: item.pricePerDay,
+            amount: item.gross,
+          },
+        ];
   if (item.additionalCost > 0) {
     lines.push({
       description: 'Biaya Tambahan',

@@ -24,7 +24,9 @@ function row(overrides: Partial<RentalRow> = {}): RentalRow {
     region: 'Jakarta',
     startDate: '2026-08-01',
     endDate: '2026-08-05',
+    priceUnit: 'hari',
     pricePerDay: 350_000,
+    pricePerMonth: null,
     cogsPerDay: 120_000,
     cogsType: 'Air EV',
     additionalCost: 0,
@@ -177,6 +179,58 @@ describe('buildRentalInvoice', () => {
       ISSUED_AT,
     );
     expect(invoice.customer).toEqual({ name: 'Pelanggan Umum', phone: null });
+  });
+});
+
+describe('monthly-priced bookings on the invoice', () => {
+  it('bills one line per calendar month, each a share of the monthly price', () => {
+    const item = presentRental(
+      row({
+        priceUnit: 'bulan',
+        pricePerMonth: 8_000_000,
+        pricePerDay: 0,
+        startDate: '2026-08-05',
+        endDate: '2026-09-04',
+      }),
+    );
+    const lines = invoiceLines(item);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({
+      description: 'Sewa Kendaraan B 1234 XYZ · Agustus 2026',
+      detail: 'Air EV · Dengan Driver · 27 dari 31 hari',
+      quantity: 27,
+      unit: 'hari',
+      quantityLabel: '27/31 bulan',
+      unitPrice: 8_000_000,
+      amount: 6_967_742,
+    });
+    expect(lines[1]).toMatchObject({
+      description: 'Sewa Kendaraan B 1234 XYZ · September 2026',
+      quantityLabel: '4/30 bulan',
+      amount: 1_066_667,
+    });
+    // The lines are the whole booking: they sum to what the recap calls gross.
+    const invoice = buildRentalInvoice(item, ISSUER, ISSUED_AT);
+    expect(invoice.subtotal).toBe(item.gross);
+    expect(invoice.rental.days).toBe(31);
+  });
+
+  it('calls a full month "1 bulan" at the quoted price', () => {
+    const item = presentRental(
+      row({
+        priceUnit: 'bulan',
+        pricePerMonth: 8_000_000,
+        pricePerDay: 0,
+        startDate: '2026-08-01',
+        endDate: '2026-08-31',
+      }),
+    );
+    const [line] = invoiceLines(item);
+    expect(line).toMatchObject({
+      quantityLabel: '1 bulan',
+      unitPrice: 8_000_000,
+      amount: 8_000_000,
+    });
   });
 });
 

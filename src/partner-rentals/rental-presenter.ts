@@ -15,6 +15,7 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 export const RENTAL_TYPES = ['Dengan Driver', 'Lepas Kunci', 'Rent to Rent'] as const;
 export const PRICE_UNITS = ['hari', 'bulan'] as const;
+export type PriceUnit = (typeof PRICE_UNITS)[number];
 
 /**
  * PPN on rental services, in basis points. 11% is the effective burden on a
@@ -71,7 +72,16 @@ export interface RentalItemDto {
   displayEndDate: string;
   /** Inclusive day count of the CLIPPED range. */
   days: number;
+  /** How the price was quoted; see `pricePerMonth`. */
+  priceUnit: PriceUnit;
+  /**
+   * Rupiah per day. For a 'bulan' booking this is the effective average over
+   * the presented range (the monthly price pro-rated per calendar month), so
+   * two months of one booking may show different figures.
+   */
   pricePerDay: number;
+  /** The quoted monthly price; null for a 'hari' booking. */
+  pricePerMonth: number | null;
   cogsPerDay: number;
   cogsType: string | null;
   additionalCost: number;
@@ -149,6 +159,117 @@ export function daysInclusive(startDate: string, endDate: string): number {
   return Math.round((toUtcMs(endDate) - toUtcMs(startDate)) / DAY_MS) + 1;
 }
 
+function fromUtcMs(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** Calendar days in the month of an ISO date (28..31). */
+export function daysInMonthOf(isoDate: string): number {
+  const [y, m] = isoDate.split('-').map(Number);
+  return new Date(Date.UTC(y!, m, 0)).getUTCDate();
+}
+
+// ---- pricing ------------------------------------------------------------------
+
+/** The columns the pricing rule reads — a rentals row satisfies it, as does a DTO-built draft. */
+export interface PricedBooking {
+  startDate: string;
+  endDate: string;
+  priceUnit: string;
+  pricePerDay: number;
+  pricePerMonth: number | null;
+}
+
+/** One calendar month's share of a 'bulan' booking. */
+export interface MonthlySlice {
+  /** First/last booked day inside this month. */
+  from: string;
+  to: string;
+  /** Booked days in the month, and the month's length. */
+  days: number;
+  daysInMonth: number;
+  /** round(pricePerMonth × days / daysInMonth) — integer rupiah, rounded once. */
+  amount: number;
+}
+
+/**
+ * A 'bulan' booking split per calendar month it touches. The monthly price
+ * buys a calendar month, so each month is billed pricePerMonth × (booked days
+ * ÷ days in THAT month) — 28..31, never a flat 30. This is the legacy
+ * jadwal-mobil-cogs rule; a month booked in full therefore costs exactly the
+ * monthly price, and 5 Agu–4 Sep is 27/31 of August plus 4/30 of September.
+ *
+ * Money is integer rupiah, so each slice is rounded ONCE here; the per-day
+ * spread in {@link bookingDailyAmounts} then distributes that exact amount.
+ */
+export function monthlySlices(booking: PricedBooking): MonthlySlice[] {
+  const price = booking.pricePerMonth ?? 0;
+  const slices: MonthlySlice[] = [];
+  let cursor = booking.startDate;
+  while (cursor <= booking.endDate) {
+    const daysInMonth = daysInMonthOf(cursor);
+    const monthEnd = `${cursor.slice(0, 7)}-${pad(daysInMonth)}`;
+    const to = monthEnd < booking.endDate ? monthEnd : booking.endDate;
+    const days = daysInclusive(cursor, to);
+    slices.push({
+      from: cursor,
+      to,
+      days,
+      daysInMonth,
+      amount: Math.round((price * days) / daysInMonth),
+    });
+    cursor = fromUtcMs(toUtcMs(to) + DAY_MS);
+  }
+  return slices;
+}
+
+/**
+ * Rupiah each calendar day of `[from, to]` (a sub-range of the booking) earns,
+ * keyed by ISO date — THE pricing rule, read by the recap, the invoice and the
+ * day matrices alike so they can never disagree.
+ *
+ * 'hari' bookings earn `pricePerDay` flat. 'bulan' bookings earn their month's
+ * slice ({@link monthlySlices}) spread over that month's booked days by largest
+ * remainder, so the days of a slice always sum to exactly the slice.
+ */
+export function bookingDailyAmounts(
+  booking: PricedBooking,
+  from: string,
+  to: string,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const lo = from > booking.startDate ? from : booking.startDate;
+  const hi = to < booking.endDate ? to : booking.endDate;
+  if (hi < lo) return out;
+
+  if (booking.priceUnit !== 'bulan') {
+    for (let ms = toUtcMs(lo); ms <= toUtcMs(hi); ms += DAY_MS) {
+      out.set(fromUtcMs(ms), booking.pricePerDay);
+    }
+    return out;
+  }
+
+  for (const slice of monthlySlices(booking)) {
+    if (slice.to < lo || slice.from > hi) continue;
+    const base = Math.floor(slice.amount / slice.days);
+    let remainder = slice.amount - base * slice.days;
+    for (let ms = toUtcMs(slice.from); ms <= toUtcMs(slice.to); ms += DAY_MS) {
+      const day = fromUtcMs(ms);
+      const amount = base + (remainder > 0 ? 1 : 0);
+      if (remainder > 0) remainder -= 1;
+      if (day >= lo && day <= hi) out.set(day, amount);
+    }
+  }
+  return out;
+}
+
+/** Σ {@link bookingDailyAmounts} over `[from, to]` — the gross of that range. */
+export function grossFor(booking: PricedBooking, from: string, to: string): number {
+  let total = 0;
+  for (const amount of bookingDailyAmounts(booking, from, to).values()) total += amount;
+  return total;
+}
+
 /** First/last calendar day of (year, month) as 'YYYY-MM-DD'. */
 export function monthBounds(year: number, month: number): { start: string; end: string } {
   const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -171,7 +292,8 @@ export function currentPeriodWib(now = new Date()): { month: number; year: numbe
  *
  * Legacy month semantics: a rental appears in month M when [startDate, endDate]
  * overlaps M; its displayed range and day count are CLIPPED to M, so
- *   gross     = pricePerDay × clippedDays
+ *   gross     = Σ bookingDailyAmounts over the clipped days
+ *               (= pricePerDay × clippedDays for a 'hari' booking)
  *   cogsTotal = cogsPerDay × clippedDays
  *   nettProfit = gross − cogsTotal − additionalCost
  *   omset     = gross + additionalCost
@@ -200,7 +322,7 @@ export function presentRental(
     if (displayEndDate > end) displayEndDate = end;
   }
   const days = daysInclusive(displayStartDate, displayEndDate);
-  const gross = row.pricePerDay * days;
+  const gross = grossFor(row, displayStartDate, displayEndDate);
   const cogsTotal = row.cogsPerDay * days;
   const ppnBase = gross + row.additionalCost;
   const ppnAmount = ppnFor(ppnBase, row.ppnRateBps);
@@ -214,7 +336,10 @@ export function presentRental(
     displayStartDate,
     displayEndDate,
     days,
-    pricePerDay: row.pricePerDay,
+    priceUnit: row.priceUnit === 'bulan' ? 'bulan' : 'hari',
+    // A monthly booking has no single day rate; show the range's average.
+    pricePerDay: row.priceUnit === 'bulan' ? Math.round(gross / days) : row.pricePerDay,
+    pricePerMonth: row.priceUnit === 'bulan' ? row.pricePerMonth : null,
     cogsPerDay: row.cogsPerDay,
     cogsType: row.cogsType,
     additionalCost: row.additionalCost,
@@ -336,11 +461,12 @@ export interface RentalDailyIncomeDto {
  * rule the matrix and its cell drill-down both read, so a cell can never
  * disagree with the row it sits in.
  *
- * The booking contributes `pricePerDay` to every day of its month-clipped range
- * (the same clipping `presentRental` applies) and its per-transaction
- * `additionalCost` once, on the first clipped day. Σ days therefore equals
- * `gross + additionalCost` — the `omset` Rental Monitoring shows. Payment status
- * is not a filter: Rental Monitoring counts omset for every booking in the month.
+ * The booking contributes its daily amount ({@link bookingDailyAmounts}) to
+ * every day of its month-clipped range (the same clipping `presentRental`
+ * applies) and its per-transaction `additionalCost` once, on the first clipped
+ * day. Σ days therefore equals `gross + additionalCost` — the `omset` Rental
+ * Monitoring shows. Payment status is not a filter: Rental Monitoring counts
+ * omset for every booking in the month.
  *
  * @returns day-of-month → integer rupiah; empty when the booking misses the month
  */
@@ -349,15 +475,11 @@ export function rentalBookingDays(
   period: { year: number; month: number },
 ): Record<number, number> {
   const { start, end } = monthBounds(period.year, period.month);
-  const from = row.startDate < start ? start : row.startDate;
-  const to = row.endDate > end ? end : row.endDate;
-  if (to < from) return {}; // booking does not overlap the month at all
-
   const days: Record<number, number> = {};
-  const firstDay = Number(from.slice(8, 10));
-  const lastDay = Number(to.slice(8, 10));
-  for (let day = firstDay; day <= lastDay; day++) {
-    days[day] = row.pricePerDay + (day === firstDay ? row.additionalCost : 0);
+  let first = true;
+  for (const [date, amount] of bookingDailyAmounts(row, start, end)) {
+    days[Number(date.slice(8, 10))] = amount + (first ? row.additionalCost : 0);
+    first = false;
   }
   return days;
 }
