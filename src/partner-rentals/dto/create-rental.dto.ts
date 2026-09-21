@@ -130,6 +130,17 @@ export class CreateRentalDto {
   allowOverlap?: boolean;
 
   @ApiPropertyOptional({
+    description:
+      'Charge PPN on this transaction. Default true. Only takes effect while the ' +
+      'partner is a PKP — a non-PKP partner never charges PPN regardless. Set ' +
+      'false for a sale outside the scope of VAT. Cannot change once the rental ' +
+      'is Sudah Dibayar (CONFLICT); revert the payment status first.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  applyPpn?: boolean;
+
+  @ApiPropertyOptional({
     type: [Number],
     example: [12, 13],
     description:

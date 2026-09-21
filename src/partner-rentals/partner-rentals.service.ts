@@ -208,7 +208,7 @@ export class PartnerRentalsService {
         values.plateNumber,
       );
     }
-    const ppnRateBps = await this.currentPpnRateBps(partnerId);
+    const ppnRateBps = await this.resolvePpnRateBps(partnerId, dto);
 
     const row = await this.database.db.transaction(async (tx) => {
       const [inserted] = await tx
@@ -240,14 +240,14 @@ export class PartnerRentalsService {
       );
     }
 
-    // An unpaid rental re-reads the partner's current PKP status (turning PKP
-    // on should apply to bills not yet issued); a settled one keeps the rate it
-    // was billed at, so fixing a typo can never move an amount the customer
-    // has already paid.
+    // An unpaid rental re-reads the partner's current PKP status and the
+    // per-transaction choice (turning PKP on should apply to bills not yet
+    // issued); a settled one keeps the rate it was billed at, so fixing a typo
+    // can never move an amount the customer has already paid.
     const ppnRateBps =
       existing.paymentStatus === 'Sudah Dibayar'
-        ? existing.ppnRateBps
-        : await this.currentPpnRateBps(partnerId);
+        ? this.assertPpnUnchanged(existing.ppnRateBps, dto)
+        : await this.resolvePpnRateBps(partnerId, dto);
 
     const row = await this.database.db.transaction(async (tx) => {
       const [updated] = await tx
@@ -436,13 +436,42 @@ export class PartnerRentalsService {
     return row;
   }
 
-  /** The VAT rate a NEW rental of this partner is written with. */
-  private async currentPpnRateBps(partnerId: number): Promise<number> {
+  /**
+   * The VAT rate an UNSETTLED rental of this partner is written with: the
+   * statutory rate while the partner is a PKP and the transaction is not opted
+   * out (`applyPpn` defaults to true), otherwise 0. A non-PKP partner may not
+   * charge PPN at all, so its opt-in is ignored rather than honoured.
+   */
+  private async resolvePpnRateBps(
+    partnerId: number,
+    dto: Pick<CreateRentalDto, 'applyPpn'>,
+  ): Promise<number> {
+    if (dto.applyPpn === false) return 0;
     const [partner] = await this.database.db
       .select({ isPkp: partners.isPkp })
       .from(partners)
       .where(eq(partners.id, partnerId));
     return partner?.isPkp ? PPN_RATE_BPS : 0;
+  }
+
+  /**
+   * A settled rental keeps its rate. Rather than silently ignoring an explicit
+   * `applyPpn` that would change it, the write is refused: the caller asked for
+   * a different bill than the one the customer already paid, and must revert
+   * the payment status first. Omitting the flag (or matching) passes through.
+   */
+  private assertPpnUnchanged(
+    existingRateBps: number,
+    dto: Pick<CreateRentalDto, 'applyPpn'>,
+  ): number {
+    const wantsPpn = dto.applyPpn;
+    if (wantsPpn != null && wantsPpn !== existingRateBps > 0) {
+      throw new ConflictException(
+        'PPN transaksi yang sudah dibayar tidak dapat diubah. Ubah status bayar ke ' +
+          '"Belum Dibayar" terlebih dahulu bila tagihannya memang perlu direvisi.',
+      );
+    }
+    return existingRateBps;
   }
 
   /**
