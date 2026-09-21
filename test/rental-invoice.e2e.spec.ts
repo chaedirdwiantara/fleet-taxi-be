@@ -253,6 +253,33 @@ describe('rental invoice', () => {
     expect(silent.body.data.ppnRateBps).toBe(1100);
   }, 60_000);
 
+  it('keeps a monthly quote as quoted and pro-rates it per calendar month', async () => {
+    const res = await agentA
+      .post('/partner/portal/rentals')
+      .send(
+        rentalBody({
+          startDate: `${YEAR}-03-01`,
+          endDate: `${YEAR}-04-15`,
+          price: 6_200_000,
+          priceUnit: 'bulan',
+        }),
+      )
+      .expect(201);
+    const created = res.body.data as Record<string, unknown>;
+    expect(created.priceUnit).toBe('bulan');
+    expect(created.pricePerMonth).toBe(6_200_000);
+    // all of March (31/31) + 15 of April's 30 days
+    expect(created.gross).toBe(6_200_000 + 3_100_000);
+
+    const march = await agentA.get(`/partner/portal/rentals?month=3&year=${YEAR}`).expect(200);
+    const inMarch = (march.body.data.items as Array<Record<string, unknown>>).find(
+      (i) => i.id === created.id,
+    )!;
+    expect(inMarch.days).toBe(31);
+    expect(inMarch.gross).toBe(6_200_000);
+    expect(inMarch.pricePerDay).toBe(200_000);
+  });
+
   it('rejects an NPWP with letters in it', async () => {
     const res = await agentA
       .put('/partner/portal/rentals/tax-settings')

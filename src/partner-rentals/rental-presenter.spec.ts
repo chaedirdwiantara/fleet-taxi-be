@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { rentals } from '../db/schema';
 import {
+  bookingDailyAmounts,
   currentPeriodWib,
   daysInclusive,
+  grossFor,
   matchesSearch,
   monthBounds,
+  monthlySlices,
   nettByType,
   ppnFor,
   presentProof,
   presentRental,
+  rentalBookingDays,
   rentalDailyIncome,
   RentalProofRow,
   slugifyCogsKey,
@@ -28,7 +32,9 @@ function row(overrides: Partial<RentalRow> = {}): RentalRow {
     region: 'Jakarta',
     startDate: '2026-07-01',
     endDate: '2026-07-27',
+    priceUnit: 'hari',
     pricePerDay: 450_000,
+    pricePerMonth: null,
     cogsPerDay: 335_833,
     cogsType: 'Air EV',
     additionalCost: 0,
@@ -470,5 +476,67 @@ describe('PPN', () => {
     expect(summary.paidTotalBilled).toBe(paid.omset + paid.ppnAmount);
     // The margin figure must not move when VAT is switched on.
     expect(summary.paidNettProfit).toBe(paid.gross - paid.cogsTotal - paid.additionalCost);
+  });
+});
+
+describe('monthly pricing — the monthly price buys a calendar month', () => {
+  const monthly = (over: Partial<RentalRow> = {}) =>
+    row({ priceUnit: 'bulan', pricePerMonth: 8_000_000, pricePerDay: 0, ...over });
+
+  it('bills a month booked in full at exactly the monthly price, whatever its length', () => {
+    for (const [start, end] of [
+      ['2026-07-01', '2026-07-31'],
+      ['2026-06-01', '2026-06-30'],
+      ['2024-02-01', '2024-02-29'],
+    ]) {
+      const item = presentRental(monthly({ startDate: start, endDate: end }));
+      expect(item.gross).toBe(8_000_000);
+      expect(item.priceUnit).toBe('bulan');
+      expect(item.pricePerMonth).toBe(8_000_000);
+    }
+  });
+
+  it('pro-rates each month by ITS calendar length, never a flat 30 days', () => {
+    // 5 Agu–4 Sep: 27 of August's 31 days + 4 of September's 30.
+    const slices = monthlySlices(monthly({ startDate: '2026-08-05', endDate: '2026-09-04' }));
+    expect(slices).toEqual([
+      { from: '2026-08-05', to: '2026-08-31', days: 27, daysInMonth: 31, amount: 6_967_742 },
+      { from: '2026-09-01', to: '2026-09-04', days: 4, daysInMonth: 30, amount: 1_066_667 },
+    ]);
+    const full = presentRental(monthly({ startDate: '2026-08-05', endDate: '2026-09-04' }));
+    expect(full.gross).toBe(6_967_742 + 1_066_667);
+    expect(full.days).toBe(31);
+    expect(full.pricePerDay).toBe(Math.round(full.gross / 31));
+
+    // The September view sees only its own slice.
+    const sep = presentRental(monthly({ startDate: '2026-08-05', endDate: '2026-09-04' }), {
+      year: 2026,
+      month: 9,
+    });
+    expect(sep.days).toBe(4);
+    expect(sep.gross).toBe(1_066_667);
+  });
+
+  it('spreads a slice over its days so they always sum back to the slice', () => {
+    const booking = monthly({ startDate: '2026-08-05', endDate: '2026-09-04' });
+    const days = bookingDailyAmounts(booking, '2026-08-01', '2026-08-31');
+    expect(days.size).toBe(27);
+    const amounts = [...days.values()];
+    expect(amounts.reduce((a, b) => a + b, 0)).toBe(6_967_742);
+    // Largest remainder: every day is within one rupiah of every other.
+    expect(Math.max(...amounts) - Math.min(...amounts)).toBeLessThanOrEqual(1);
+    // and the matrix reads the same rule
+    const matrix = rentalBookingDays(booking, { year: 2026, month: 8 });
+    expect(Object.values(matrix).reduce((a, b) => a + b, 0)).toBe(6_967_742);
+    expect(Object.keys(matrix)).toHaveLength(27);
+  });
+
+  it('leaves daily-priced bookings exactly as before', () => {
+    const item = presentRental(row({ startDate: '2026-07-01', endDate: '2026-07-27' }));
+    expect(item.gross).toBe(450_000 * 27);
+    expect(item.priceUnit).toBe('hari');
+    expect(item.pricePerMonth).toBeNull();
+    expect(grossFor(row(), '2026-07-01', '2026-07-03')).toBe(1_350_000);
+    expect(bookingDailyAmounts(row(), '2026-06-01', '2026-06-30').size).toBe(0);
   });
 });

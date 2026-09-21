@@ -14,6 +14,8 @@ import { RentalPaymentProofsService } from './rental-payment-proofs.service';
 import { RENTAL_PROOF_REQUIRED_MESSAGE } from './rental-proof.constants';
 import {
   currentPeriodWib,
+  daysInclusive,
+  grossFor,
   matchesSearch,
   monthBounds,
   nettByType,
@@ -396,8 +398,21 @@ export class PartnerRentalsService {
     if (endDate < startDate) {
       throw new BadRequestException('Tanggal selesai tidak boleh lebih kecil dari tanggal mulai.');
     }
-    // Monthly price is stored as a per-day rate (legacy: month = 30 days).
-    const pricePerDay = dto.priceUnit === 'bulan' ? Math.round(dto.price / 30) : dto.price;
+    // A monthly price is kept as quoted and pro-rated per calendar month at
+    // read time (see `monthlySlices`); `pricePerDay` then only carries the
+    // booking's average so nothing downstream sees a zero rate.
+    const priceUnit = dto.priceUnit === 'bulan' ? 'bulan' : 'hari';
+    const pricePerMonth = priceUnit === 'bulan' ? dto.price : null;
+    const pricePerDay =
+      priceUnit === 'bulan'
+        ? Math.round(
+            grossFor(
+              { startDate, endDate, priceUnit, pricePerDay: 0, pricePerMonth },
+              startDate,
+              endDate,
+            ) / daysInclusive(startDate, endDate),
+          )
+        : dto.price;
     return {
       plateNumber: dto.plateNumber.trim(),
       plateNumberNorm: norm,
@@ -405,7 +420,9 @@ export class PartnerRentalsService {
       region: dto.region?.trim() || null,
       startDate,
       endDate,
+      priceUnit,
       pricePerDay,
+      pricePerMonth,
       cogsPerDay: dto.cogsPerDay,
       cogsType: dto.cogsType?.trim() || null,
       additionalCost: dto.additionalCost ?? 0,

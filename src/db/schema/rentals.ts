@@ -29,7 +29,21 @@ export const rentals = pgTable(
     region: text('region'),
     startDate: date('start_date').notNull(), // inclusive
     endDate: date('end_date').notNull(), // inclusive
-    pricePerDay: bigint('price_per_day', { mode: 'number' }).notNull(), // integer rupiah
+    /**
+     * How the price was quoted. 'hari' bills `price_per_day` per calendar day.
+     * 'bulan' bills `price_per_month` per calendar month, pro-rated by the days
+     * of EACH month the booking touches (28–31) — the legacy jadwal-mobil-cogs
+     * rule — so a month booked in full costs exactly the monthly price.
+     */
+    priceUnit: text('price_unit').notNull().default('hari'), // one of PRICE_UNITS
+    /**
+     * Integer rupiah per day for 'hari' rows. For 'bulan' rows this is only the
+     * booking's effective average, kept so old readers see a sane number —
+     * every computation goes through `bookingDailyAmounts` instead.
+     */
+    pricePerDay: bigint('price_per_day', { mode: 'number' }).notNull(),
+    /** The quoted monthly price, integer rupiah; null unless price_unit = 'bulan'. */
+    pricePerMonth: bigint('price_per_month', { mode: 'number' }),
     cogsPerDay: bigint('cogs_per_day', { mode: 'number' }).notNull().default(0),
     cogsType: text('cogs_type'),
     // TOTAL for the transaction (NOT per day) — counted once in monthly figures.
