@@ -193,6 +193,66 @@ describe('rental invoice', () => {
     expect(summary.paidGross).toBe(summary.paidTotalBilled - summary.paidPpn);
   }, 60_000);
 
+  it('lets a PKP partner write one rental outside the scope of PPN', async () => {
+    await agentA.put('/partner/portal/rentals/tax-settings').send({ isPkp: true }).expect(200);
+
+    const taxed = await agentA.post('/partner/portal/rentals').send(rentalBody()).expect(201);
+    const exempt = await agentA
+      .post('/partner/portal/rentals')
+      .send(rentalBody({ applyPpn: false }))
+      .expect(201);
+
+    expect(taxed.body.data.ppnRateBps).toBe(1100);
+    expect(exempt.body.data.ppnRateBps).toBe(0);
+    expect(exempt.body.data.ppnAmount).toBe(0);
+    expect(exempt.body.data.totalBilled).toBe(exempt.body.data.ppnBase);
+
+    // Still unpaid, so the choice can be revisited either way.
+    const retaxed = await agentA
+      .put(`/partner/portal/rentals/${exempt.body.data.id}`)
+      .send(rentalBody({ plateNumber: exempt.body.data.plateNumber, applyPpn: true }))
+      .expect(200);
+    expect(retaxed.body.data.ppnRateBps).toBe(1100);
+  });
+
+  it('ignores the opt-in of a partner that is not a PKP', async () => {
+    await agentB.put('/partner/portal/rentals/tax-settings').send({ isPkp: false }).expect(200);
+    const res = await agentB
+      .post('/partner/portal/rentals')
+      .send(rentalBody({ applyPpn: true }))
+      .expect(201);
+    expect(res.body.data.ppnRateBps).toBe(0);
+  });
+
+  it('refuses to change PPN on a settled rental until it is reverted', async () => {
+    await agentA.put('/partner/portal/rentals/tax-settings').send({ isPkp: true }).expect(200);
+    const id = await createPaidRental(agentA);
+    const paid = await agentA.get(`/partner/portal/rentals?month=3&year=${YEAR}`).expect(200);
+    const row = (paid.body.data.items as Array<Record<string, unknown>>).find((i) => i.id === id)!;
+    expect(row.ppnRateBps).toBe(1100);
+
+    const body = rentalBody({
+      plateNumber: row.plateNumber,
+      paymentStatus: 'Sudah Dibayar',
+      allowOverlap: true,
+    });
+    const refused = await agentA
+      .put(`/partner/portal/rentals/${id}`)
+      .send({ ...body, applyPpn: false })
+      .expect(409);
+    expect(refused.body.error.code).toBe('CONFLICT');
+    expect(refused.body.error.message).toMatch(/sudah dibayar/i);
+
+    // Re-saving with the same choice, or without stating one, is fine.
+    const same = await agentA
+      .put(`/partner/portal/rentals/${id}`)
+      .send({ ...body, applyPpn: true })
+      .expect(200);
+    expect(same.body.data.ppnRateBps).toBe(1100);
+    const silent = await agentA.put(`/partner/portal/rentals/${id}`).send(body).expect(200);
+    expect(silent.body.data.ppnRateBps).toBe(1100);
+  }, 60_000);
+
   it('rejects an NPWP with letters in it', async () => {
     const res = await agentA
       .put('/partner/portal/rentals/tax-settings')
