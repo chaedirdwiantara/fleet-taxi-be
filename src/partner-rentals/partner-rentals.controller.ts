@@ -15,7 +15,14 @@ import {
   StreamableFile,
   UseGuards,
 } from '@nestjs/common';
-import { ApiConsumes, ApiCookieAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiConsumes,
+  ApiCookieAuth,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Request } from 'express';
 import { SessionUser } from '../auth/session.types';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -24,12 +31,19 @@ import { requirePartner } from '../partner-portal/portal.util';
 import { CreateRentalDto } from './dto/create-rental.dto';
 import { PresignRentalProofDto } from './dto/presign-rental-proof.dto';
 import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto';
+import { UpdateInvoiceSettingsDto } from './dto/update-invoice-settings.dto';
 import { UpdateTaxSettingsDto } from './dto/update-tax-settings.dto';
 import { UpsertCogsDefaultDto } from './dto/upsert-cogs-default.dto';
 import { ListRentalsFilters, PartnerRentalsService } from './partner-rentals.service';
 import { RentalCogsDefaultsService } from './rental-cogs-defaults.service';
 import { invoiceFileName } from './rental-invoice';
 import { RentalInvoicePdfService } from './rental-invoice-pdf.service';
+import {
+  INVOICE_ASSET_CONTENT_TYPE,
+  INVOICE_ASSET_KINDS,
+  InvoiceAssetKind,
+} from './rental-invoice-settings.constants';
+import { RentalInvoiceSettingsService } from './rental-invoice-settings.service';
 import { RentalPaymentProofsService } from './rental-payment-proofs.service';
 import { RentalTaxSettingsService } from './rental-tax-settings.service';
 import { RentalsExportService } from './rentals-export.service';
@@ -62,6 +76,24 @@ function parseOptionalInt(name: string, raw: string | undefined): number | undef
   return n;
 }
 
+function parseAssetKind(raw: string): InvoiceAssetKind {
+  if (!(INVOICE_ASSET_KINDS as readonly string[]).includes(raw)) {
+    throw new BadRequestException(`kind must be one of: ${INVOICE_ASSET_KINDS.join(', ')}`);
+  }
+  return raw as InvoiceAssetKind;
+}
+
+/** `?signed=true|1` — anything else is the plain, unsigned document. */
+function parseSigned(raw: string | undefined): boolean {
+  return raw === 'true' || raw === '1';
+}
+
+const ASSET_KIND_PARAM = {
+  name: 'kind',
+  enum: INVOICE_ASSET_KINDS,
+  description: 'signature = tanda tangan, stamp = stempel',
+};
+
 /**
  * Rental Monitoring (legacy admin/jadwal-mobil-cogs, ported into the partner
  * portal). Static routes (cogs-defaults, export) are declared BEFORE the
@@ -78,6 +110,7 @@ export class PartnerRentalsController {
     private readonly exportService: RentalsExportService,
     private readonly proofs: RentalPaymentProofsService,
     private readonly invoicePdf: RentalInvoicePdfService,
+    private readonly invoiceSettings: RentalInvoiceSettingsService,
     private readonly taxSettings: RentalTaxSettingsService,
   ) {}
 
@@ -109,6 +142,60 @@ export class PartnerRentalsController {
   @ApiOperation({ summary: 'Turn PPN on/off for future rentals and set the NPWP' })
   updateTaxSettings(@CurrentUser() user: SessionUser, @Body() dto: UpdateTaxSettingsDto) {
     return this.taxSettings.update(requirePartner(user), dto);
+  }
+
+  @Get('invoice-settings')
+  @ApiOperation({ summary: "Who signs the partner's invoices, and the uploaded signature/stamp" })
+  getInvoiceSettings(@CurrentUser() user: SessionUser) {
+    return this.invoiceSettings.get(requirePartner(user));
+  }
+
+  @Put('invoice-settings')
+  @ApiOperation({ summary: 'Set the signatory name and title printed on invoices' })
+  updateInvoiceSettings(@CurrentUser() user: SessionUser, @Body() dto: UpdateInvoiceSettingsDto) {
+    return this.invoiceSettings.update(requirePartner(user), dto);
+  }
+
+  @Put('invoice-settings/:kind')
+  @ApiOperation({ summary: 'Upload (replace) the PNG signature or stamp artwork' })
+  @ApiParam(ASSET_KIND_PARAM)
+  @ApiConsumes(INVOICE_ASSET_CONTENT_TYPE)
+  uploadInvoiceAsset(
+    @CurrentUser() user: SessionUser,
+    @Param('kind') kind: string,
+    @Req() req: Request,
+  ) {
+    // Raw body via the route-scoped express.raw() in app.setup.ts
+    return this.invoiceSettings.storeAsset(
+      requirePartner(user),
+      parseAssetKind(kind),
+      req.headers['content-type'],
+      req.body as Buffer | undefined,
+    );
+  }
+
+  @Delete('invoice-settings/:kind')
+  @ApiOperation({ summary: 'Remove the signature or stamp artwork' })
+  @ApiParam(ASSET_KIND_PARAM)
+  removeInvoiceAsset(@CurrentUser() user: SessionUser, @Param('kind') kind: string) {
+    return this.invoiceSettings.removeAsset(requirePartner(user), parseAssetKind(kind));
+  }
+
+  @Get('invoice-settings/:kind/file')
+  @Header('Cache-Control', 'private, no-store')
+  @ApiOperation({
+    summary: 'Stream the signature or stamp PNG (dev; prod settings carry presigned S3 URLs)',
+  })
+  @ApiParam(ASSET_KIND_PARAM)
+  async invoiceAssetFile(
+    @CurrentUser() user: SessionUser,
+    @Param('kind') kind: string,
+  ): Promise<StreamableFile> {
+    const { contentType, body } = await this.invoiceSettings.assetFile(
+      requirePartner(user),
+      parseAssetKind(kind),
+    );
+    return new StreamableFile(body, { type: contentType });
   }
 
   @Get('export')
@@ -275,12 +362,23 @@ export class PartnerRentalsController {
 
   @Get(':id/invoice')
   @ApiOperation({ summary: 'Download the PDF invoice of one own PAID rental' })
+  @ApiQuery({
+    name: 'signed',
+    required: false,
+    type: Boolean,
+    description: 'true = embed the uploaded signature and stamp (409 when no signature is set)',
+  })
   async invoice(
     @CurrentUser() user: SessionUser,
     @Param('id', ParseIntPipe) id: number,
+    @Query('signed') signedRaw?: string,
   ): Promise<StreamableFile> {
-    const invoice = await this.rentalsService.invoiceFor(requirePartner(user), id);
-    const buffer = await this.invoicePdf.toPdf(invoice);
+    const partnerId = requirePartner(user);
+    const invoice = await this.rentalsService.invoiceFor(partnerId, id);
+    const signing = parseSigned(signedRaw)
+      ? await this.invoiceSettings.signingAssets(partnerId)
+      : null;
+    const buffer = await this.invoicePdf.toPdf(invoice, signing);
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${invoiceFileName(invoice.invoiceNumber)}"`,

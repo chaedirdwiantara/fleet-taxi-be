@@ -275,6 +275,28 @@ describe('PPN on the invoice', () => {
     expect(Number.isInteger(invoice.total)).toBe(true);
   });
 
+  it('signs as the partner until an officer is named', () => {
+    const plain = buildRentalInvoice(presentRental(row()), ISSUER, ISSUED_AT);
+    expect(plain.signatory).toEqual({ name: 'Jayana Giri Sentosa', title: null });
+
+    const officer = buildRentalInvoice(
+      presentRental(row()),
+      { ...ISSUER, signatoryName: '  M Rizki ', signatoryTitle: 'Head of Rental Operations' },
+      ISSUED_AT,
+    );
+    expect(officer.signatory).toEqual({ name: 'M Rizki', title: 'Head of Rental Operations' });
+    // The signatory never leaks into the issuer block printed in the header.
+    expect(officer.issuer).toEqual(ISSUER);
+
+    // A blank title is "no title", not an empty line under the name.
+    const blankTitle = buildRentalInvoice(
+      presentRental(row()),
+      { ...ISSUER, signatoryName: 'M Rizki', signatoryTitle: '   ' },
+      ISSUED_AT,
+    );
+    expect(blankTitle.signatory.title).toBeNull();
+  });
+
   it('prints the issuer NPWP so the document is usable for tax records', () => {
     const invoice = buildRentalInvoice(presentRental(row({ ppnRateBps: 1100 })), PKP, ISSUED_AT);
     expect(invoice.issuer.npwp).toBe('01.234.567.8-901.000');

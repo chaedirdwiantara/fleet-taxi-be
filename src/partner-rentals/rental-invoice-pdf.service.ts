@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { createElement as h } from 'react';
 import { RentalInvoiceDto } from './rental-invoice';
+import { InvoiceSigningAssets } from './rental-invoice-settings.service';
 
 /**
  * Renders a `RentalInvoiceDto` as an A4 invoice PDF.
@@ -15,6 +16,7 @@ const BRAND = '#c8102e';
 const INK = '#0f172a'; // slate-900
 const MUTED = '#64748b'; // slate-500
 const LINE = '#e2e8f0'; // slate-200
+const RULE = '#94a3b8'; // slate-400 — the signature rule must survive a grey photocopy
 const SURFACE = '#f8fafc'; // slate-50
 const ZEBRA = '#fbfcfd';
 const PAID = '#047857'; // emerald-700
@@ -59,11 +61,26 @@ function formatDateTime(iso: string): string {
   return `${DATETIME_FMT.format(new Date(iso))} WIB`;
 }
 
+/** Signing block geometry (pt). The signature overlaps the stamp's left edge, as a wet one would. */
+const SIGN_BOX_W = 150;
+const SIGN_BOX_H = 64;
+const STAMP_SIZE = 64;
+const SIGNATURE_W = 104;
+const SIGNATURE_H = 56;
+
 @Injectable()
 export class RentalInvoicePdfService {
-  async toPdf(invoice: RentalInvoiceDto): Promise<Buffer> {
+  /**
+   * @param signing PNG artwork to embed over the signature line; null renders
+   *   the plain document with an empty space to sign by hand.
+   */
+  async toPdf(
+    invoice: RentalInvoiceDto,
+    signing: InvoiceSigningAssets | null = null,
+  ): Promise<Buffer> {
     // Imported lazily: @react-pdf/renderer is ESM-heavy and only needed here
-    const { Document, Page, Text, View, renderToBuffer } = await import('@react-pdf/renderer');
+    const { Document, Image, Page, Text, View, renderToBuffer } =
+      await import('@react-pdf/renderer');
 
     const text = (
       content: string,
@@ -330,6 +347,38 @@ export class RentalInvoicePdfService {
 
     // ---- payment + signature -------------------------------------------------
 
+    // Stamp first, signature on top — the ink sits over the stamp, never under it.
+    const signingBlock = h(
+      View,
+      { style: { width: SIGN_BOX_W, height: SIGN_BOX_H, marginTop: 4, position: 'relative' } },
+      signing?.stamp
+        ? h(Image, {
+            src: { data: signing.stamp, format: 'png' },
+            style: {
+              position: 'absolute',
+              top: 0,
+              left: SIGN_BOX_W - STAMP_SIZE - 8,
+              width: STAMP_SIZE,
+              height: STAMP_SIZE,
+              objectFit: 'contain',
+            },
+          })
+        : null,
+      signing
+        ? h(Image, {
+            src: { data: signing.signature, format: 'png' },
+            style: {
+              position: 'absolute',
+              top: (SIGN_BOX_H - SIGNATURE_H) / 2,
+              left: 0,
+              width: SIGNATURE_W,
+              height: SIGNATURE_H,
+              objectFit: 'contain',
+            },
+          })
+        : null,
+    );
+
     const settled = invoice.payment.settledAt;
     const footerBlocks = h(
       View,
@@ -376,9 +425,19 @@ export class RentalInvoicePdfService {
         View,
         { style: { width: 180, alignItems: 'center' } },
         text('Hormat kami,', { fontSize: 8.5, color: MUTED }),
-        h(View, { style: { height: 46 } }),
-        h(View, { style: { width: 150, borderBottom: 0.5, borderColor: LINE } }),
-        text(invoice.issuer.name, { fontSize: 9, fontWeight: 700, marginTop: 4 }),
+        signingBlock,
+        text(invoice.signatory.name, { fontSize: 9, fontWeight: 700, marginTop: 2 }),
+        h(View, {
+          style: { width: SIGN_BOX_W, borderBottom: 0.6, borderColor: RULE, marginTop: 3 },
+        }),
+        invoice.signatory.title
+          ? text(invoice.signatory.title, {
+              fontSize: 8,
+              color: MUTED,
+              marginTop: 3,
+              textAlign: 'center',
+            })
+          : null,
       ),
     );
 
@@ -401,7 +460,9 @@ export class RentalInvoicePdfService {
       text(
         // The platform is already credited in the header; naming it again here
         // would push a vendor mention onto a document the partner issues.
-        `Dokumen ini diterbitkan oleh ${invoice.issuer.name}, dibuat otomatis dan sah tanpa tanda tangan basah.`,
+        signing
+          ? `Dokumen ini diterbitkan oleh ${invoice.issuer.name}; tanda tangan dan stempel disematkan secara digital.`
+          : `Dokumen ini diterbitkan oleh ${invoice.issuer.name}, dibuat otomatis dan sah tanpa tanda tangan basah.`,
         {
           fontSize: 7,
           color: MUTED,

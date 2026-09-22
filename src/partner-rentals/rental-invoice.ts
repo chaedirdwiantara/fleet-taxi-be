@@ -38,11 +38,23 @@ function monthLabel(isoDate: string): string {
   return MONTH_FMT.format(new Date(`${isoDate}T00:00:00Z`));
 }
 
+/** The partner as printed on the document, plus who signs on its behalf. */
+export interface InvoiceIssuer {
+  name: string;
+  code: string;
+  npwp: string | null;
+  /** Named officer; null/blank signs as the partner itself. */
+  signatoryName?: string | null;
+  signatoryTitle?: string | null;
+}
+
 export interface RentalInvoiceDto {
   invoiceNumber: string;
   /** ISO instant the document was rendered. */
   issuedAt: string;
   issuer: { name: string; code: string; npwp: string | null };
+  /** Printed under the signature line: the officer, or the partner when none is set. */
+  signatory: { name: string; title: string | null };
   customer: { name: string; phone: string | null };
   rental: {
     plateNumber: string;
@@ -213,7 +225,7 @@ export function amountInWords(amount: number): string {
  */
 export function buildRentalInvoice(
   item: RentalItemDto,
-  issuer: { name: string; code: string; npwp: string | null },
+  issuer: InvoiceIssuer,
   issuedAt: Date,
 ): RentalInvoiceDto {
   const lines = invoiceLines(item);
@@ -231,7 +243,11 @@ export function buildRentalInvoice(
   return {
     invoiceNumber: invoiceNumber(item),
     issuedAt: issuedAt.toISOString(),
-    issuer,
+    issuer: { name: issuer.name, code: issuer.code, npwp: issuer.npwp },
+    signatory: {
+      name: issuer.signatoryName?.trim() || issuer.name,
+      title: issuer.signatoryTitle?.trim() || null,
+    },
     customer: { name: item.customerName?.trim() || 'Pelanggan Umum', phone: item.customerPhone },
     rental: {
       plateNumber: item.plateNumber,

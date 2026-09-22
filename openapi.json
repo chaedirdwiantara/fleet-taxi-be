@@ -3315,6 +3315,154 @@
         ]
       }
     },
+    "/partner/portal/rentals/invoice-settings": {
+      "get": {
+        "operationId": "PartnerRentalsController_getInvoiceSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Who signs the partner's invoices, and the uploaded signature/stamp",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "put": {
+        "operationId": "PartnerRentalsController_updateInvoiceSettings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInvoiceSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Set the signatory name and title printed on invoices",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals/invoice-settings/{kind}": {
+      "put": {
+        "operationId": "PartnerRentalsController_uploadInvoiceAsset",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "description": "signature = tanda tangan, stamp = stempel",
+            "schema": {
+              "enum": [
+                "signature",
+                "stamp"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Upload (replace) the PNG signature or stamp artwork",
+        "tags": [
+          "partner-portal"
+        ]
+      },
+      "delete": {
+        "operationId": "PartnerRentalsController_removeInvoiceAsset",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "description": "signature = tanda tangan, stamp = stempel",
+            "schema": {
+              "enum": [
+                "signature",
+                "stamp"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Remove the signature or stamp artwork",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
+    "/partner/portal/rentals/invoice-settings/{kind}/file": {
+      "get": {
+        "operationId": "PartnerRentalsController_invoiceAssetFile",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": true,
+            "in": "path",
+            "description": "signature = tanda tangan, stamp = stempel",
+            "schema": {
+              "enum": [
+                "signature",
+                "stamp"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Stream the signature or stamp PNG (dev; prod settings carry presigned S3 URLs)",
+        "tags": [
+          "partner-portal"
+        ]
+      }
+    },
     "/partner/portal/rentals/export": {
       "get": {
         "operationId": "PartnerRentalsController_export",
@@ -3788,6 +3936,15 @@
             "in": "path",
             "schema": {
               "type": "number"
+            }
+          },
+          {
+            "name": "signed",
+            "required": false,
+            "in": "query",
+            "description": "true = embed the uploaded signature and stamp (409 when no signature is set)",
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -5223,6 +5380,21 @@
         "required": [
           "isPkp"
         ]
+      },
+      "UpdateInvoiceSettingsDto": {
+        "type": "object",
+        "properties": {
+          "signatoryName": {
+            "type": "string",
+            "description": "Printed under the signature; empty falls back to the partner name",
+            "example": "M Rizki"
+          },
+          "signatoryTitle": {
+            "type": "string",
+            "description": "Printed under the name, e.g. the job title",
+            "example": "Head of Rental Operations PT JGS"
+          }
+        }
       },
       "PresignRentalProofDto": {
         "type": "object",

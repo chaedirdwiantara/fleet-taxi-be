@@ -13,6 +13,15 @@ export const partners = pgTable('partners', {
    */
   isPkp: boolean('is_pkp').notNull().default(false),
   npwp: text('npwp'), // printed on invoices of a PKP partner
+  /**
+   * Who signs the partner's rental invoices — a named officer and their
+   * title ("Head of Rental Operations"). Null falls back to the partner name.
+   */
+  invoiceSignatoryName: text('invoice_signatory_name'),
+  invoiceSignatoryTitle: text('invoice_signatory_title'),
+  /** Storage keys of the PNG signature / company stamp embedded on signed invoices. */
+  invoiceSignatureKey: text('invoice_signature_key'),
+  invoiceStampKey: text('invoice_stamp_key'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
