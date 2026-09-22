@@ -47,6 +47,13 @@ export function configureApp(app: INestApplication): void {
     '/partner/portal/rentals/proofs',
     express.raw({ type: ['image/*', 'application/pdf'], limit: '11mb' }),
   );
+  // Invoice signature / stamp artwork is uploaded THROUGH the API (one small
+  // PNG per partner, replaced rarely) — no presign flow, so this is the prod
+  // path too. Only PNG is accepted; JSON on the same prefix is untouched.
+  app.use(
+    '/partner/portal/rentals/invoice-settings',
+    express.raw({ type: 'image/png', limit: '3mb' }),
+  );
   app.use(
     buildSessionMiddleware(
       {

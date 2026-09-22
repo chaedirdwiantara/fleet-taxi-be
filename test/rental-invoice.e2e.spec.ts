@@ -25,6 +25,12 @@ const JPG = Buffer.from(
   'base64',
 );
 
+// 1x1 transparent PNG — the smallest valid signature artwork
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
+
 /** supertest buffers text by default; PDFs need an explicit binary parser. */
 const asBuffer = (req: request.Test) =>
   req.buffer(true).parse((res, cb) => {
@@ -158,6 +164,83 @@ describe('rental invoice', () => {
     expect((res.body as Buffer).subarray(0, 4).toString()).toBe('%PDF');
     expect((res.body as Buffer).length).toBeGreaterThan(1000);
   }, 30_000);
+
+  it('embeds the named officer, signature and stamp only when asked for a signed copy', async () => {
+    const id = await createPaidRental(agentA);
+
+    const named = await agentA
+      .put('/partner/portal/rentals/invoice-settings')
+      .send({ signatoryName: 'M Rizki', signatoryTitle: 'Head of Rental Operations PT JGS' })
+      .expect(200);
+    expect(named.body.data).toEqual({
+      signatoryName: 'M Rizki',
+      signatoryTitle: 'Head of Rental Operations PT JGS',
+      signatureUrl: null,
+      stampUrl: null,
+    });
+
+    // The plain copy is always available; the signed one needs artwork first.
+    await asBuffer(agentA.get(`/partner/portal/rentals/${id}/invoice`)).expect(200);
+    const refused = await agentA
+      .get(`/partner/portal/rentals/${id}/invoice?signed=true`)
+      .expect(409);
+    expect(refused.body.error.code).toBe('CONFLICT');
+    expect(refused.body.error.message).toMatch(/tanda tangan belum diunggah/i);
+
+    const notPng = await agentA
+      .put('/partner/portal/rentals/invoice-settings/signature')
+      .set('Content-Type', 'image/png')
+      .send(JPG)
+      .expect(400);
+    expect(notPng.body.error.message).toMatch(/bukan PNG/i);
+    await agentA
+      .put('/partner/portal/rentals/invoice-settings/logo')
+      .set('Content-Type', 'image/png')
+      .send(PNG)
+      .expect(400);
+
+    const uploaded = await agentA
+      .put('/partner/portal/rentals/invoice-settings/signature')
+      .set('Content-Type', 'image/png')
+      .send(PNG)
+      .expect(200);
+    expect(uploaded.body.data.signatureUrl).toMatch(/invoice-settings\/signature\/file/);
+    expect(uploaded.body.data.stampUrl).toBeNull();
+    const file = await asBuffer(agentA.get(uploaded.body.data.signatureUrl)).expect(200);
+    expect(file.headers['content-type']).toContain('image/png');
+    expect(Buffer.compare(file.body as Buffer, PNG)).toBe(0);
+
+    // A stamp is optional; a signed copy renders with or without it.
+    const signedNoStamp = await asBuffer(
+      agentA.get(`/partner/portal/rentals/${id}/invoice?signed=true`),
+    ).expect(200);
+    expect((signedNoStamp.body as Buffer).subarray(0, 4).toString()).toBe('%PDF');
+
+    await agentA
+      .put('/partner/portal/rentals/invoice-settings/stamp')
+      .set('Content-Type', 'image/png')
+      .send(PNG)
+      .expect(200);
+    const signed = await asBuffer(
+      agentA.get(`/partner/portal/rentals/${id}/invoice?signed=1`),
+    ).expect(200);
+    expect(signed.headers['content-type']).toContain('application/pdf');
+    expect((signed.body as Buffer).length).toBeGreaterThan(1000);
+
+    // Settings and artwork are the partner's own.
+    const other = await agentB.get('/partner/portal/rentals/invoice-settings').expect(200);
+    expect(other.body.data.signatoryName).toBeNull();
+    expect(other.body.data.signatureUrl).toBeNull();
+    await agentB.get('/partner/portal/rentals/invoice-settings/signature/file').expect(404);
+
+    const cleared = await agentA
+      .delete('/partner/portal/rentals/invoice-settings/signature')
+      .expect(200);
+    expect(cleared.body.data.signatureUrl).toBeNull();
+    expect(cleared.body.data.stampUrl).not.toBeNull();
+    await agentA.get(`/partner/portal/rentals/${id}/invoice?signed=true`).expect(409);
+    await agentA.delete('/partner/portal/rentals/invoice-settings/stamp').expect(200);
+  }, 60_000);
 
   it("never exposes another partner's rental", async () => {
     const id = await createPaidRental(agentA);

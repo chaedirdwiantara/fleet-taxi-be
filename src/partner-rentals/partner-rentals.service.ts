@@ -317,7 +317,13 @@ export class PartnerRentalsService {
     }
 
     const [partner] = await this.database.db
-      .select({ name: partners.name, code: partners.code, npwp: partners.npwp })
+      .select({
+        name: partners.name,
+        code: partners.code,
+        npwp: partners.npwp,
+        signatoryName: partners.invoiceSignatoryName,
+        signatoryTitle: partners.invoiceSignatoryTitle,
+      })
       .from(partners)
       .where(eq(partners.id, partnerId));
     if (!partner) throw new NotFoundException('Partner tidak ditemukan');

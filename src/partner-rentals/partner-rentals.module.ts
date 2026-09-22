@@ -4,6 +4,7 @@ import { PartnerRentalsController } from './partner-rentals.controller';
 import { PartnerRentalsService } from './partner-rentals.service';
 import { RentalCogsDefaultsService } from './rental-cogs-defaults.service';
 import { RentalInvoicePdfService } from './rental-invoice-pdf.service';
+import { RentalInvoiceSettingsService } from './rental-invoice-settings.service';
 import { RentalPaymentProofsService } from './rental-payment-proofs.service';
 import { RentalTaxSettingsService } from './rental-tax-settings.service';
 import { RentalsExportService } from './rentals-export.service';
@@ -18,6 +19,7 @@ import { RentalsExportService } from './rentals-export.service';
     RentalsExportService,
     RentalPaymentProofsService,
     RentalInvoicePdfService,
+    RentalInvoiceSettingsService,
     RentalTaxSettingsService,
   ],
   // Rental income is one of the three sources of the partner portal's All Fleet

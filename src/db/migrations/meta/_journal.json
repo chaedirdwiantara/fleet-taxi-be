@@ -141,6 +141,13 @@
       "when": 1789952342714,
       "tag": "0019_awesome_lilandra",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790088057366,
+      "tag": "0020_lush_mastermind",
+      "breakpoints": true
     }
   ]
 }
