@@ -34,6 +34,10 @@ export interface InvoiceSigningAssets {
 /** Bytes 0..7 of every PNG file (RFC 2083 §3.1). */
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+/** IHDR colour type sits at byte 25 (8 signature + 8 chunk header + 9 into IHDR). */
+const PNG_COLOUR_TYPE_OFFSET = 25;
+const PNG_COLOUR_TYPE_PALETTE = 3;
+
 const PRESIGN_GET_TTL_SEC = 600;
 
 type SettingsRow = {
@@ -94,6 +98,14 @@ export class RentalInvoiceSettingsService {
     }
     if (!body.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
       throw new BadRequestException('File bukan PNG yang valid');
+    }
+    // @react-pdf's PNG decoder mis-renders palette images that carry a tRNS
+    // alpha chunk (8-bit "PNG-8"): the artwork comes out as coloured noise.
+    // Refuse them up front with a fix the user can act on.
+    if (body[PNG_COLOUR_TYPE_OFFSET] === PNG_COLOUR_TYPE_PALETTE) {
+      throw new BadRequestException(
+        'PNG berpalet (PNG-8) tidak didukung. Simpan ulang sebagai PNG 24/32-bit (RGBA) dengan latar transparan.',
+      );
     }
 
     const previous = await this.row(partnerId);

@@ -31,6 +31,12 @@ const PNG = Buffer.from(
   'base64',
 );
 
+// 1x1 palette PNG with a tRNS chunk — the "PNG-8" flavour the renderer cannot draw
+const PNG8 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEUAAACnej3aAAAAAXRSTlMAQObYZgAAAApJREFUCNdjYAAAAAIAAeIhvDMAAAAASUVORK5CYII=',
+  'base64',
+);
+
 /** supertest buffers text by default; PDFs need an explicit binary parser. */
 const asBuffer = (req: request.Test) =>
   req.buffer(true).parse((res, cb) => {
@@ -193,6 +199,12 @@ describe('rental invoice', () => {
       .send(JPG)
       .expect(400);
     expect(notPng.body.error.message).toMatch(/bukan PNG/i);
+    const png8 = await agentA
+      .put('/partner/portal/rentals/invoice-settings/signature')
+      .set('Content-Type', 'image/png')
+      .send(PNG8)
+      .expect(400);
+    expect(png8.body.error.message).toMatch(/PNG-8/);
     await agentA
       .put('/partner/portal/rentals/invoice-settings/logo')
       .set('Content-Type', 'image/png')
