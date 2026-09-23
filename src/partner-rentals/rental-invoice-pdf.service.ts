@@ -61,7 +61,7 @@ function formatDateTime(iso: string): string {
   return `${DATETIME_FMT.format(new Date(iso))} WIB`;
 }
 
-/** Signing block geometry (pt). The signature overlaps the stamp's left edge, as a wet one would. */
+/** Signing block geometry (pt). The stamp overlaps the signature's right end, pressed over it. */
 const SIGN_BOX_W = 150;
 const SIGN_BOX_H = 64;
 const STAMP_SIZE = 64;
@@ -347,23 +347,11 @@ export class RentalInvoicePdfService {
 
     // ---- payment + signature -------------------------------------------------
 
-    // Stamp first, signature on top — the ink sits over the stamp, never under it.
+    // Signature first, stamp on top — a company stamp is pressed over the
+    // signed page, so the red must sit over the ink, never under it.
     const signingBlock = h(
       View,
       { style: { width: SIGN_BOX_W, height: SIGN_BOX_H, marginTop: 4, position: 'relative' } },
-      signing?.stamp
-        ? h(Image, {
-            src: { data: signing.stamp, format: 'png' },
-            style: {
-              position: 'absolute',
-              top: 0,
-              left: SIGN_BOX_W - STAMP_SIZE - 8,
-              width: STAMP_SIZE,
-              height: STAMP_SIZE,
-              objectFit: 'contain',
-            },
-          })
-        : null,
       signing
         ? h(Image, {
             src: { data: signing.signature, format: 'png' },
@@ -377,8 +365,20 @@ export class RentalInvoicePdfService {
             },
           })
         : null,
+      signing?.stamp
+        ? h(Image, {
+            src: { data: signing.stamp, format: 'png' },
+            style: {
+              position: 'absolute',
+              top: 0,
+              left: SIGN_BOX_W - STAMP_SIZE - 8,
+              width: STAMP_SIZE,
+              height: STAMP_SIZE,
+              objectFit: 'contain',
+            },
+          })
+        : null,
     );
-
     const settled = invoice.payment.settledAt;
     const footerBlocks = h(
       View,
