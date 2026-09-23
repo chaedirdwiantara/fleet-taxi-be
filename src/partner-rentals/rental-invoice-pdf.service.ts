@@ -63,10 +63,12 @@ function formatDateTime(iso: string): string {
 
 /** Signing block geometry (pt). The stamp overlaps the signature's right end, pressed over it. */
 const SIGN_BOX_W = 150;
-const SIGN_BOX_H = 64;
-const STAMP_SIZE = 64;
-const SIGNATURE_W = 104;
-const SIGNATURE_H = 56;
+const SIGN_BOX_H = 72;
+const STAMP_SIZE = 72;
+/** Stamp x-offset: covers the right ~40% of the signature, like a real stamp pressed over it. */
+const STAMP_LEFT = 68;
+const SIGNATURE_W = 116;
+const SIGNATURE_H = 62;
 
 @Injectable()
 export class RentalInvoicePdfService {
@@ -371,7 +373,7 @@ export class RentalInvoicePdfService {
             style: {
               position: 'absolute',
               top: 0,
-              left: SIGN_BOX_W - STAMP_SIZE - 8,
+              left: STAMP_LEFT,
               width: STAMP_SIZE,
               height: STAMP_SIZE,
               objectFit: 'contain',
